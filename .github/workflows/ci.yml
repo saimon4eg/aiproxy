@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+      - run: go mod verify
+      - run: go vet ./...
+      - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+      - uses: codecov/codecov-action@v5
+        with:
+          file: ./coverage.out
+        if: github.event_name == 'push'
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "ldflags=-s -w -X main.version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ldflags=-s -w" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build all platforms
+        run: |
+          mkdir -p dist
+          for goos in linux windows darwin; do
+            for goarch in amd64 arm64; do
+              ext=""
+              if [ "$goos" = "windows" ]; then ext=".exe"; fi
+              echo "Building $goos/$goarch..."
+              CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -v \
+                -ldflags="${{ steps.version.outputs.ldflags }}" \
+                -o "dist/copilot2api-$goos-$goarch$ext" .
+            done
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: copilot2api-binaries
+          path: dist/*
+      - name: Upload to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload ${{ github.ref_name }} dist/copilot2api-*
+
+  docker:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          name: copilot2api-binaries
+          path: dist
+      - name: Make binaries executable
+        run: chmod +x dist/*
+      - name: Smoke test image
+        run: |
+          docker build -f Dockerfile.ci -t copilot2api-smoke .
+          docker run --rm copilot2api-smoke --version
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
+            type=sha,enable=${{ github.event_name == 'push' }}
+            type=ref,event=branch,enable=${{ github.event_name == 'push' }}
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') || github.event_name == 'release' }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ci
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

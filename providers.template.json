@@ -1,0 +1,243 @@
+{
+  "providers": [
+    {
+      "provider_id": "copilot",
+      "name": "GitHub Copilot",
+      "type": "copilot",
+      "auth": "oauth",
+      "enabled": true,
+      "model_prefix": "copilot",
+      "integration_id": "copilot-developer-cli",
+      "api_version": "2026-06-01",
+      "proxy_host": "host.docker.internal:2080"
+    },
+    {
+      "provider_id": "anthropic",
+      "name": "Anthropic (OAuth)",
+      "type": "anthropic",
+      "auth": "oauth",
+      "enabled": false,
+      "base_url": "https://api.anthropic.com",
+      "model_prefix": "anthropic",
+      "proxy_host": "host.docker.internal:2080",
+      "convert_to_openai": true,
+      "convert_to_anthropic": false,
+      "models": [
+        {
+          "id": "claude-opus-4-7",
+          "name": "Claude Opus 4.7",
+          "supported_endpoints": ["/v1/messages"],
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true,
+              "structured_outputs": true,
+              "reasoning_effort": ["low", "medium", "high", "xhigh", "max"],
+              "max_thinking_budget": 32000,
+              "min_thinking_budget": 1024
+            },
+            "limits": {
+              "max_context_window_tokens": 264000,
+              "max_output_tokens": 64000,
+              "max_prompt_tokens": 200000
+            }
+          }
+        },
+        {
+          "id": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "supported_endpoints": ["/v1/messages"],
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true,
+              "structured_outputs": true,
+              "reasoning_effort": ["low", "medium", "high", "max"],
+              "max_thinking_budget": 32000,
+              "min_thinking_budget": 1024
+            },
+            "limits": {
+              "max_context_window_tokens": 264000,
+              "max_output_tokens": 64000,
+              "max_prompt_tokens": 200000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "provider_id": "openai",
+      "name": "OpenAI (OAuth)",
+      "type": "openai",
+      "auth": "oauth",
+      "enabled": false,
+      "model_prefix": "openai",
+      "proxy_host": "host.docker.internal:2080",
+      "convert_to_openai": false,
+      "convert_to_anthropic": true
+    },
+    {
+      "provider_id": "deepseek",
+      "name": "DeepSeek",
+      "type": "anthropic",
+      "base_url": "https://api.deepseek.com/anthropic",
+      "api_key": "",
+      "enabled": true,
+      "model_prefix": "deepseek",
+      "convert_to_openai": true,
+      "convert_to_anthropic": false,
+      "models": [
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "supported_endpoints": ["/v1/messages"],
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": false,
+              "reasoning_effort": ["high", "xhigh"]
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 384000
+            }
+          }
+        },
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "supported_endpoints": ["/v1/messages"],
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": false,
+              "reasoning_effort": ["high", "xhigh"]
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 384000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "provider_id": "zai",
+      "name": "Z.ai (Anthropic-эндпоинт)",
+      "type": "anthropic",
+      "base_url": "https://api.z.ai/api/anthropic",
+      "api_key": "",
+      "enabled": false,
+      "model_prefix": "zai",
+      "convert_to_openai": true,
+      "convert_to_anthropic": false,
+      "models": [
+        {
+          "id": "glm-5.2",
+          "name": "GLM 5.2",
+          "supported_endpoints": ["/v1/messages"],
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true,
+              "reasoning_effort": ["low", "medium", "high", "max"],
+              "max_thinking_budget": 32000,
+              "min_thinking_budget": 1024
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "provider_id": "anthropic-api",
+      "name": "Anthropic (API-ключ)",
+      "type": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key": "",
+      "proxy_host": "host.docker.internal:2080",
+      "enabled": false,
+      "model_prefix": "anthropic-api",
+      "convert_to_openai": true,
+      "convert_to_anthropic": false,
+      "models": [
+        {
+          "id": "claude-opus-4-7",
+          "name": "Claude Opus 4.7",
+          "supported_endpoints": ["/v1/messages"],
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true,
+              "structured_outputs": true,
+              "reasoning_effort": ["low", "medium", "high", "xhigh", "max"],
+              "max_thinking_budget": 32000,
+              "min_thinking_budget": 1024
+            },
+            "limits": {
+              "max_context_window_tokens": 264000,
+              "max_output_tokens": 64000,
+              "max_prompt_tokens": 200000
+            }
+          }
+        },
+        {
+          "id": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "supported_endpoints": ["/v1/messages"],
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true,
+              "structured_outputs": true,
+              "reasoning_effort": ["low", "medium", "high", "max"],
+              "max_thinking_budget": 32000,
+              "min_thinking_budget": 1024
+            },
+            "limits": {
+              "max_context_window_tokens": 264000,
+              "max_output_tokens": 64000,
+              "max_prompt_tokens": 200000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "provider_id": "openai-api",
+      "name": "OpenAI (API-ключ)",
+      "type": "openai",
+      "base_url": "https://api.openai.com",
+      "api_key": "",
+      "proxy_host": "host.docker.internal:2080",
+      "enabled": false,
+      "model_prefix": "openai-api",
+      "convert_to_openai": false,
+      "convert_to_anthropic": true
+    }
+  ]
+}

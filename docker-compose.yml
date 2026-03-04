@@ -1,0 +1,22 @@
+services:
+  aiproxy-new:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aiproxy-new:local
+    container_name: aiproxy-new
+    restart: unless-stopped
+    stop_grace_period: 35s
+    ports:
+      - "127.0.0.1:8081:7777"
+    environment:
+      COPILOT2API_DEBUG: "${COPILOT2API_DEBUG:-false}"
+      COPILOT2API_TOKEN_DIR: "/home/aiproxy/.config/copilot2api"
+    command: ["--debug"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./auth-data:/home/aiproxy/.config/copilot2api
+      - ./providers.json:/app/providers.json:ro
+    stdin_open: true
+    tty: true
