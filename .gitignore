@@ -40,3 +40,4 @@ copilot2api-darwin-arm64
 
 # copilot/provider credentials (bind-mounted into container)
 auth-data/
+providers.json
