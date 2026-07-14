@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/whtsky/copilot2api/anthropic"
 	"github.com/whtsky/copilot2api/internal/modelid"
+	"github.com/whtsky/copilot2api/internal/sse"
 )
 
 // Route determines the handler for an incoming request based on model prefix and endpoint.
@@ -88,19 +91,18 @@ func (c *Config) Route(r *http.Request) (http.Handler, error) {
 		return p.makePassthroughHandler("/v1/messages"), nil
 	case endpoint == "/v1/responses" && p.Type == "openai":
 		return p.makePassthroughHandler("/v1/responses"), nil
-	case endpoint == "/v1/chat/completions" && p.Type == "openai":
+	case endpoint == "/v1/chat/completions" && (p.Type == "openai" || p.Type == "chat"):
 		return p.makePassthroughHandler("/v1/chat/completions"), nil
 	}
 
 	// ── Conversion ──
 	switch {
 	case endpoint == "/v1/messages" && p.Type == "openai" && p.ConvertToAnthropic:
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			writeError(w, "/v1/messages", http.StatusNotImplemented,
-				"messages-to-responses conversion is not implemented")
-		}), nil
+		return p.makeMessagesToResponsesHandler(), nil
 	case endpoint == "/v1/responses" && p.Type == "anthropic" && p.ConvertToOpenAI:
 		return p.makeResponsesToAnthropicHandler(), nil
+	case endpoint == "/v1/messages" && p.Type == "chat" && p.ConvertToAnthropic:
+		return p.makeMessagesToChatHandler(), nil
 	}
 
 	return nil, fmt.Errorf("model %s does not support endpoint %s", model, endpoint)
@@ -412,6 +414,298 @@ func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 	})
 }
 
+// makeMessagesToResponsesHandler converts Anthropic /v1/messages →
+// OpenAI /v1/responses via Go converters (no linguafranca), proxies to
+// the upstream provider, and converts the response back.
+func (p *ProviderConfig) makeMessagesToResponsesHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := loggerFromContext(r.Context())
+		body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusBadRequest, "failed to read request body")
+			return
+		}
+
+		var msgReq anthropic.AnthropicMessagesRequest
+		if err := json.Unmarshal(body, &msgReq); err != nil {
+			writeError(w, r.URL.Path, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+
+		responsesReq, err := anthropic.ConvertAnthropicToResponses(msgReq)
+		if err != nil {
+			logger.Error("messages→responses conversion failed", "error", err)
+			writeError(w, r.URL.Path, http.StatusBadGateway, "conversion failed")
+			return
+		}
+
+		reqBody, err := json.Marshal(responsesReq)
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to marshal request")
+			return
+		}
+
+		isStream := msgReq.Stream
+		targetURL := strings.TrimRight(p.BaseURL, "/") + "/v1/responses"
+		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(reqBody))
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to create upstream request")
+			return
+		}
+		copyHeaders(upstreamReq.Header, r.Header)
+		upstreamReq.Header.Set("Content-Type", "application/json")
+		if err := p.setAuthHeader(upstreamReq); err != nil {
+			writeError(w, r.URL.Path, http.StatusBadGateway, err.Error())
+			return
+		}
+
+		client := p.httpClient()
+
+		if isStream {
+			upstreamReq.Header.Set("Accept", "text/event-stream")
+			resp, err := client.Do(upstreamReq)
+			if err != nil {
+				logger.Error("upstream streaming failed", "error", err)
+				writeError(w, r.URL.Path, http.StatusBadGateway, "upstream unavailable")
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 400 {
+				errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+				copyHeaders(w.Header(), resp.Header)
+				w.WriteHeader(resp.StatusCode)
+				w.Write(errBody)
+				return
+			}
+
+			state := &anthropic.ResponsesStreamState{}
+			sse.BeginSSE(w)
+			scanner := bufio.NewScanner(resp.Body)
+			scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+			var eventType string
+			hasFlusher, canFlush := w.(http.Flusher)
+			_ = hasFlusher
+
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.HasPrefix(line, "event: ") {
+					eventType = strings.TrimPrefix(line, "event: ")
+					continue
+				}
+				if !strings.HasPrefix(line, "data: ") {
+					continue
+				}
+				dataStr := strings.TrimPrefix(line, "data: ")
+				if dataStr == "[DONE]" {
+					break
+				}
+				var sev anthropic.ResponseStreamEvent
+				if err := json.Unmarshal([]byte(dataStr), &sev); err != nil {
+					continue
+				}
+				if sev.Type == "" && eventType != "" {
+					sev.Type = eventType
+				}
+				events := anthropic.TranslateResponsesStreamEvent(sev, state)
+				for _, ev := range events {
+					evData, _ := json.Marshal(ev)
+					fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, evData)
+				}
+				if canFlush && len(events) > 0 {
+					flusher := w.(http.Flusher)
+					flusher.Flush()
+				}
+			}
+			return
+		}
+
+		// Non-streaming.
+		resp, err := client.Do(upstreamReq)
+		if err != nil {
+			logger.Error("upstream request failed", "error", err)
+			writeError(w, r.URL.Path, http.StatusBadGateway, "upstream unavailable")
+			return
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusBadGateway, "failed to read upstream response")
+			return
+		}
+		if resp.StatusCode >= 400 {
+			copyHeaders(w.Header(), resp.Header)
+			w.WriteHeader(resp.StatusCode)
+			w.Write(respBody)
+			return
+		}
+
+		var result anthropic.ResponsesResult
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			logger.Error("failed to parse responses result", "error", err)
+			writeError(w, r.URL.Path, http.StatusBadGateway, "failed to parse upstream response")
+			return
+		}
+
+		msgResp := anthropic.ConvertResponsesToAnthropic(result)
+		resultJSON, err := json.Marshal(msgResp)
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to marshal response")
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(resultJSON)
+	})
+}
+
+// makeMessagesToChatHandler converts Anthropic /v1/messages →
+// /v1/chat/completions via Go converters, proxies to the upstream
+// provider, and converts the response back.
+func (p *ProviderConfig) makeMessagesToChatHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := loggerFromContext(r.Context())
+		body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusBadRequest, "failed to read request body")
+			return
+		}
+
+		var msgReq anthropic.AnthropicMessagesRequest
+		if err := json.Unmarshal(body, &msgReq); err != nil {
+			writeError(w, r.URL.Path, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+
+		chatReq, err := anthropic.ConvertAnthropicToOpenAI(msgReq)
+		if err != nil {
+			logger.Error("messages→chat conversion failed", "error", err)
+			writeError(w, r.URL.Path, http.StatusBadGateway, "conversion failed")
+			return
+		}
+
+		reqBody, err := json.Marshal(chatReq)
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to marshal request")
+			return
+		}
+
+		isStream := msgReq.Stream
+		targetURL := strings.TrimRight(p.BaseURL, "/") + "/v1/chat/completions"
+		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(reqBody))
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to create upstream request")
+			return
+		}
+		copyHeaders(upstreamReq.Header, r.Header)
+		upstreamReq.Header.Set("Content-Type", "application/json")
+		if err := p.setAuthHeader(upstreamReq); err != nil {
+			writeError(w, r.URL.Path, http.StatusBadGateway, err.Error())
+			return
+		}
+
+		client := p.httpClient()
+
+		if isStream {
+			upstreamReq.Header.Set("Accept", "text/event-stream")
+			resp, err := client.Do(upstreamReq)
+			if err != nil {
+				logger.Error("upstream streaming failed", "error", err)
+				writeError(w, r.URL.Path, http.StatusBadGateway, "upstream unavailable")
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 400 {
+				errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+				copyHeaders(w.Header(), resp.Header)
+				w.WriteHeader(resp.StatusCode)
+				w.Write(errBody)
+				return
+			}
+
+			state := anthropic.NewStreamState()
+			sse.BeginSSE(w)
+			scanner := bufio.NewScanner(resp.Body)
+			scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+			hasFlusher, canFlush := w.(http.Flusher)
+			_ = hasFlusher
+
+			for scanner.Scan() {
+				line := scanner.Text()
+				if !strings.HasPrefix(line, "data: ") {
+					continue
+				}
+				dataStr := strings.TrimPrefix(line, "data: ")
+				if dataStr == "[DONE]" {
+					break
+				}
+				var chunk anthropic.OpenAIChatCompletionChunk
+				if err := json.Unmarshal([]byte(dataStr), &chunk); err != nil {
+					continue
+				}
+				events, err := anthropic.ConvertOpenAIChunkToAnthropicEvents(chunk, state)
+				if err != nil {
+					logger.Error("chat chunk conversion failed", "error", err)
+					continue
+				}
+				for _, ev := range events {
+					evData, _ := json.Marshal(ev)
+					fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, evData)
+				}
+				if canFlush && len(events) > 0 {
+					flusher := w.(http.Flusher)
+					flusher.Flush()
+				}
+			}
+			return
+		}
+
+		// Non-streaming.
+		resp, err := client.Do(upstreamReq)
+		if err != nil {
+			logger.Error("upstream request failed", "error", err)
+			writeError(w, r.URL.Path, http.StatusBadGateway, "upstream unavailable")
+			return
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusBadGateway, "failed to read upstream response")
+			return
+		}
+		if resp.StatusCode >= 400 {
+			copyHeaders(w.Header(), resp.Header)
+			w.WriteHeader(resp.StatusCode)
+			w.Write(respBody)
+			return
+		}
+
+		var chatResp anthropic.OpenAIChatCompletionsResponse
+		if err := json.Unmarshal(respBody, &chatResp); err != nil {
+			logger.Error("failed to parse chat response", "error", err)
+			writeError(w, r.URL.Path, http.StatusBadGateway, "failed to parse upstream response")
+			return
+		}
+
+		msgResp, err := anthropic.ConvertOpenAIToAnthropic(chatResp)
+		if err != nil {
+			logger.Error("chat→messages conversion failed", "error", err)
+			writeError(w, r.URL.Path, http.StatusBadGateway, "conversion failed")
+			return
+		}
+
+		resultJSON, err := json.Marshal(msgResp)
+		if err != nil {
+			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to marshal response")
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(resultJSON)
+	})
+}
+
 func (p *ProviderConfig) setAuthHeader(req *http.Request) error {
 	// Anthropic requires the version header regardless of auth mode (K4).
 	if p.Type == "anthropic" {
@@ -427,8 +721,12 @@ func (p *ProviderConfig) setAuthHeader(req *http.Request) error {
 	}
 	switch p.Type {
 	case "anthropic":
-		req.Header.Set("x-api-key", p.APIKey)
-	case "openai":
+		if p.AuthHeader == "bearer" {
+			req.Header.Set("Authorization", "Bearer "+p.APIKey)
+		} else {
+			req.Header.Set("x-api-key", p.APIKey)
+		}
+	case "openai", "chat":
 		req.Header.Set("Authorization", "Bearer "+p.APIKey)
 	case "copilot":
 		slog.Warn("copilot provider reached setAuthHeader — routing bug", "provider", p.ProviderID)

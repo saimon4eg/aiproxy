@@ -32,6 +32,7 @@ type ProviderConfig struct {
 	APIVersion                 string            `json:"api_version,omitempty"`
 	ConvertToOpenAI    bool              `json:"convert_to_openai"`
 	ConvertToAnthropic bool              `json:"convert_to_anthropic"`
+	AuthHeader         string            `json:"auth_header,omitempty"` // "x-api-key" (default) or "bearer"
 	Models                     []json.RawMessage `json:"models,omitempty"`
 
 	tokenProvider TokenProvider
@@ -211,8 +212,12 @@ func (c *Config) Validate() error {
 			if p.ConvertToOpenAI {
 				return fmt.Errorf("provider %s: convert_to_openai requires type=anthropic, got type=openai", p.ProviderID)
 			}
+		case "chat":
+			if p.ConvertToOpenAI {
+				return fmt.Errorf("provider %s: convert_to_openai not supported for type=chat", p.ProviderID)
+			}
 		default:
-			return fmt.Errorf("provider %s: unknown type %q (must be copilot, anthropic, or openai)", p.ProviderID, p.Type)
+			return fmt.Errorf("provider %s: unknown type %q (must be copilot, anthropic, openai, or chat)", p.ProviderID, p.Type)
 		}
 	}
 

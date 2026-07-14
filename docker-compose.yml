@@ -1,10 +1,10 @@
 services:
-  aiproxy-new:
+  aiproxy:
     build:
       context: .
       dockerfile: Dockerfile
-    image: aiproxy-new:local
-    container_name: aiproxy-new
+    image: aiproxy:local
+    container_name: aiproxy
     restart: unless-stopped
     stop_grace_period: 35s
     ports:

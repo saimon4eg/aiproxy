@@ -266,10 +266,20 @@ func populateEndpoints(m *ModelInfo, p ProviderConfig) {
 		}
 	case "openai":
 		// Native: /v1/chat/completions and /v1/responses (router passthrough).
-		// /v1/messages is NOT advertised — Messages→Responses conversion is not implemented.
+		// convert_to_anthropic=true: also /v1/messages (messages→responses conversion).
 		m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/responses")
 		if !containsEndpoint(m.SupportedEndpoints, "/v1/chat/completions") {
 			m.SupportedEndpoints = append(m.SupportedEndpoints, "/v1/chat/completions")
+		}
+		if p.ConvertToAnthropic {
+			m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/messages")
+		}
+	case "chat":
+		// Native: /v1/chat/completions (router passthrough).
+		// convert_to_anthropic=true: also /v1/messages (messages→chat conversion).
+		m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/chat/completions")
+		if p.ConvertToAnthropic {
+			m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/messages")
 		}
 	}
 }
