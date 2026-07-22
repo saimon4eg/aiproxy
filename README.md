@@ -9,7 +9,7 @@
 | Эндпоинт | Описание |
 |----------|-------------|
 | `/v1/chat/completions` | OpenAI Chat Completions (стриминг и обычный режим) |
-| `/v1/responses` | OpenAI Responses API (нативный + конвертация в `/v1/messages` через linguafranca для anthropic-провайдеров с `convert_to_openai: true`) |
+| `/v1/responses` | OpenAI Responses API (нативный + конвертация в `/v1/messages` через linguafranca для провайдеров с `type: "messages"` + `convert_to_responses: true`) |
 | `/v1/messages` | Anthropic Messages API (нативный + конвертация через linguafranca) |
 | `/v1/models` | Агрегированный список моделей всех включённых провайдеров |
 | `/v1/embeddings` | OpenAI Embeddings |
@@ -55,13 +55,13 @@ docker compose up -d
     {
       "provider_id": "deepseek",
       "name": "DeepSeek",
-      "type": "anthropic",
+      "type": "messages",
       "auth": "api_key",
       "enabled": true,
       "base_url": "https://api.deepseek.com/anthropic",
       "api_key": "sk-your-key",
       "model_prefix": "deepseek",
-      "convert_to_openai": true,   // Responses ↔ Messages через linguafranca
+      "convert_to_responses": true,   // Responses ↔ Messages через linguafranca
       "proxy_host": "localhost:2080"
     }
   ]
@@ -73,16 +73,18 @@ docker compose up -d
 | Поле | Описание |
 |-------|-------------|
 | `provider_id` | Уникальный идентификатор. Для type-specific фич должен совпадать с именем адаптера |
-| `type` | `copilot`, `anthropic` или `openai` |
+| `type` | `copilot`, `messages`, `responses` или `chat` |
+| `sub_type` | Подтип для адаптера, например `"deepseek"`. Адаптер ищется как `"type[sub_type]"`, с fallback на `"type"` |
 | `auth` | `oauth` (device flow) или `api_key` |
 | `enabled` | `true` — активировать при старте |
-| `base_url` | URL upstream API. Обязателен для `anthropic`/`openai`. Для OAuth-провайдеров по умолчанию: `https://api.anthropic.com` и `https://api.openai.com` |
+| `base_url` | URL upstream API. Обязателен для `messages`/`responses`. Для OAuth-провайдеров по умолчанию: `https://api.anthropic.com` и `https://api.openai.com` |
 | `api_key` | API-ключ для `api_key`. Взаимоисключается с `auth: "oauth"` |
 | `model_prefix` | Префикс для ID моделей, направляемых этому провайдеру (например `deepseek` → соответствует `deepseek-chat`) |
-| `convert_to_openai` | Приём `/v1/responses` на anthropic-провайдере: Responses → Messages через linguafranca |
-| `convert_to_anthropic` | Приём `/v1/messages` на openai-провайдере (заглушка, 501) |
+| `convert_to_responses` | Приём `/v1/responses` на провайдере с `type: "messages"`: Responses → Messages через linguafranca |
+| `convert_to_messages` | Приём `/v1/messages` на провайдере с `type: "responses"` или `type: "chat"`: конвертация через Go-конвертеры |
 | `proxy_host` | Прокси для всего трафика провайдера (например `localhost:2080`, `socks5://host:1080`). Пусто — напрямую. Задан, но недоступен — провайдер не работает (без fallback на прямое соединение) |
-| `models` | Статический список моделей. Минимум — `id` (+ `capabilities` при необходимости); `object`, `vendor`, `supported_endpoints` подставляются автоматически. Если отсутствует — запрашивается с `base_url` |
+| `models` | Статический список моделей. Минимум — `id` (+ `capabilities` при необходимости); `object`, `vendor` подставляются автоматически из `type`. Если отсутствует — запрашивается с `base_url` |
+| `supported_endpoints` | **Не указывается в `providers.json`.** Авто: `type: "messages"` → `/v1/messages` + `/v1/responses` при `convert_to_responses=true`, и т.д. |
 
 ### OAuth-провайдеры
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/whtsky/copilot2api/internal/upstream"
+	"github.com/whtsky/copilot2api/requestlog"
 )
 
 // TokenProvider allows a provider to supply OAuth bearer tokens at request time.
@@ -21,7 +22,8 @@ type TokenProvider interface {
 type ProviderConfig struct {
 	ProviderID                 string            `json:"provider_id"`
 	Name                       string            `json:"name"`
-	Type                       string            `json:"type"` // "copilot", "anthropic", "openai"
+	Type                       string            `json:"type"` // "copilot", "messages", "responses", "chat"
+	SubType                    string            `json:"sub_type,omitempty"` // e.g. "deepseek" within "messages"
 	Auth                       string            `json:"auth"` // "oauth", "api_key"
 	Enabled                    bool              `json:"enabled"`
 	BaseURL                    string            `json:"base_url,omitempty"`
@@ -30,8 +32,8 @@ type ProviderConfig struct {
 	ModelPrefix                string            `json:"model_prefix"`
 	IntegrationID              string            `json:"integration_id,omitempty"`
 	APIVersion                 string            `json:"api_version,omitempty"`
-	ConvertToOpenAI    bool              `json:"convert_to_openai"`
-	ConvertToAnthropic bool              `json:"convert_to_anthropic"`
+	ConvertToResponses bool              `json:"convert_to_responses"`
+	ConvertToMessages  bool              `json:"convert_to_messages"`
 	AuthHeader         string            `json:"auth_header,omitempty"` // "x-api-key" (default) or "bearer"
 	Models                     []json.RawMessage `json:"models,omitempty"`
 
@@ -43,6 +45,15 @@ type ProviderConfig struct {
 // SetTokenProvider attaches an OAuth token provider.
 func (p *ProviderConfig) SetTokenProvider(tp TokenProvider) {
 	p.tokenProvider = tp
+}
+
+// AdapterKey returns the lookup key for this provider's adapter:
+// "type[subtype]" when SubType is set, otherwise just "type".
+func (p *ProviderConfig) AdapterKey() string {
+	if p.SubType != "" {
+		return p.Type + "[" + p.SubType + "]"
+	}
+	return p.Type
 }
 
 // TokenProvider returns the OAuth token provider, if any.
@@ -62,7 +73,7 @@ func (p *ProviderConfig) initHTTPClient() {
 		u, _ := upstream.ParseProxyURL(p.ProxyHost)
 		p.transport.Proxy = http.ProxyURL(u)
 	}
-	p.client = &http.Client{Transport: p.transport, Timeout: 5 * time.Minute}
+	p.client = &http.Client{Transport: requestlog.WrapTransport(p.transport), Timeout: 5 * time.Minute}
 }
 
 // Config is the root structure from providers.json.
@@ -198,26 +209,26 @@ func (c *Config) Validate() error {
 
 		switch p.Type {
 		case "copilot":
-			if p.ConvertToOpenAI {
-				return fmt.Errorf("provider %s: convert_to_openai not supported for type=copilot", p.ProviderID)
+			if p.ConvertToResponses {
+				return fmt.Errorf("provider %s: convert_to_responses not supported for type=copilot", p.ProviderID)
 			}
-			if p.ConvertToAnthropic {
-				return fmt.Errorf("provider %s: convert_to_anthropic not supported for type=copilot", p.ProviderID)
+			if p.ConvertToMessages {
+				return fmt.Errorf("provider %s: convert_to_messages not supported for type=copilot", p.ProviderID)
 			}
-		case "anthropic":
-			if p.ConvertToAnthropic {
-				return fmt.Errorf("provider %s: convert_to_anthropic requires type=openai, got type=anthropic", p.ProviderID)
+		case "messages":
+			if p.ConvertToMessages {
+				return fmt.Errorf("provider %s: convert_to_messages requires type=responses, got type=messages", p.ProviderID)
 			}
-		case "openai":
-			if p.ConvertToOpenAI {
-				return fmt.Errorf("provider %s: convert_to_openai requires type=anthropic, got type=openai", p.ProviderID)
+		case "responses":
+			if p.ConvertToResponses {
+				return fmt.Errorf("provider %s: convert_to_responses requires type=messages, got type=responses", p.ProviderID)
 			}
 		case "chat":
-			if p.ConvertToOpenAI {
-				return fmt.Errorf("provider %s: convert_to_openai not supported for type=chat", p.ProviderID)
+			if p.ConvertToResponses {
+				return fmt.Errorf("provider %s: convert_to_responses not supported for type=chat", p.ProviderID)
 			}
 		default:
-			return fmt.Errorf("provider %s: unknown type %q (must be copilot, anthropic, openai, or chat)", p.ProviderID, p.Type)
+			return fmt.Errorf("provider %s: unknown type %q (must be copilot, messages, responses, or chat)", p.ProviderID, p.Type)
 		}
 	}
 
@@ -234,6 +245,16 @@ func (c *Config) FindProvider(model string) *ProviderConfig {
 		}
 	}
 	return nil
+}
+
+// IsCopilotEnabled returns true if any enabled copilot provider exists.
+func (c *Config) IsCopilotEnabled() bool {
+	for _, p := range c.Providers {
+		if p.Type == "copilot" {
+			return true
+		}
+	}
+	return false
 }
 
 // ByID returns the provider with the given provider_id, or nil.

@@ -88,42 +88,44 @@ func (c *ModelsCache) Refresh(ctx context.Context) error {
 		}
 	}
 
-	// Fetch Copilot models and add "copilot-" prefix.
-	copilotModels, err := FetchCopilotModels(ctx, c.config)
-	if err != nil {
-		slog.Warn("failed to fetch copilot models", "error", err)
-	} else {
-		for i := range copilotModels {
-			copilotModels[i].ID = "copilot-" + copilotModels[i].ID
-		}
-		// Normalise: /responses → /v1/responses, drop ws: endpoints.
-		// Then augment: if /messages native → add /responses (via linguafranca),
-		// and vice versa.   — applies everywhere.
-		for i := range copilotModels {
-			eps := copilotModels[i].SupportedEndpoints
-			normalized := make([]string, 0, len(eps))
-			for _, ep := range eps {
-				if strings.HasPrefix(ep, "ws:") {
-					continue // not supported
-				}
-				if ep == "/responses" {
-					normalized = append(normalized, "/v1/responses")
-				} else {
-					normalized = append(normalized, ep)
-				}
+	// Fetch Copilot models if any copilot provider is enabled.
+	if c.config.IsCopilotEnabled() {
+		copilotModels, err := FetchCopilotModels(ctx, c.config)
+		if err != nil {
+			slog.Warn("failed to fetch copilot models", "error", err)
+		} else {
+			for i := range copilotModels {
+				copilotModels[i].ID = "copilot-" + copilotModels[i].ID
 			}
-			copilotModels[i].SupportedEndpoints = normalized
+			// Normalise: /responses → /v1/responses, drop ws: endpoints.
+			// Then augment: if /messages native → add /responses (via linguafranca),
+			// and vice versa.   — applies everywhere.
+			for i := range copilotModels {
+				eps := copilotModels[i].SupportedEndpoints
+				normalized := make([]string, 0, len(eps))
+				for _, ep := range eps {
+					if strings.HasPrefix(ep, "ws:") {
+						continue // not supported
+					}
+					if ep == "/responses" {
+						normalized = append(normalized, "/v1/responses")
+					} else {
+						normalized = append(normalized, ep)
+					}
+				}
+				copilotModels[i].SupportedEndpoints = normalized
 
-			hasMessages := supportsEndpointNorm(normalized, "/v1/messages")
-			hasResponses := supportsEndpointNorm(normalized, "/v1/responses")
-			if hasMessages && !hasResponses {
-				copilotModels[i].SupportedEndpoints = append(normalized, "/v1/responses")
+				hasMessages := supportsEndpointNorm(normalized, "/v1/messages")
+				hasResponses := supportsEndpointNorm(normalized, "/v1/responses")
+				if hasMessages && !hasResponses {
+					copilotModels[i].SupportedEndpoints = append(normalized, "/v1/responses")
+				}
+				if hasResponses && !hasMessages {
+					copilotModels[i].SupportedEndpoints = append(normalized, "/v1/messages")
+				}
 			}
-			if hasResponses && !hasMessages {
-				copilotModels[i].SupportedEndpoints = append(normalized, "/v1/messages")
-			}
+			allModels = append(allModels, copilotModels...)
 		}
-		allModels = append(allModels, copilotModels...)
 	}
 
 	resp := ModelsListResponse{Object: "list", Data: allModels}
@@ -172,10 +174,10 @@ func FetchModels(ctx context.Context, p ProviderConfig) ([]ModelInfo, error) {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	} else {
 		switch p.Type {
-		case "anthropic":
+		case "messages":
 			req.Header.Set("x-api-key", p.APIKey)
 			req.Header.Set("anthropic-version", "2023-06-01")
-		case "openai":
+		case "responses":
 			req.Header.Set("Authorization", "Bearer "+p.APIKey)
 		}
 	}
@@ -254,31 +256,31 @@ func FetchCopilotModels(ctx context.Context, cfg *Config) ([]ModelInfo, error) {
 // populateEndpoints adds supported endpoints based on provider flags.
 func populateEndpoints(m *ModelInfo, p ProviderConfig) {
 	switch p.Type {
-	case "anthropic":
+	case "messages":
 		// Always: /v1/messages (native).
-		// convert_to_openai=true: also /v1/responses (via linguafranca).
+		// convert_to_responses=true: also /v1/responses (via linguafranca).
 		// Chat Completions is NOT added — router always returns 400.
-		if p.ConvertToOpenAI {
+		if p.ConvertToResponses {
 			m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/responses")
 		}
 		if !containsEndpoint(m.SupportedEndpoints, "/v1/messages") {
 			m.SupportedEndpoints = append(m.SupportedEndpoints, "/v1/messages")
 		}
-	case "openai":
+	case "responses":
 		// Native: /v1/chat/completions and /v1/responses (router passthrough).
-		// convert_to_anthropic=true: also /v1/messages (messages→responses conversion).
+		// convert_to_messages=true: also /v1/messages (messages→responses conversion).
 		m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/responses")
 		if !containsEndpoint(m.SupportedEndpoints, "/v1/chat/completions") {
 			m.SupportedEndpoints = append(m.SupportedEndpoints, "/v1/chat/completions")
 		}
-		if p.ConvertToAnthropic {
+		if p.ConvertToMessages {
 			m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/messages")
 		}
 	case "chat":
 		// Native: /v1/chat/completions (router passthrough).
-		// convert_to_anthropic=true: also /v1/messages (messages→chat conversion).
+		// convert_to_messages=true: also /v1/messages (messages→chat conversion).
 		m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/chat/completions")
-		if p.ConvertToAnthropic {
+		if p.ConvertToMessages {
 			m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/messages")
 		}
 	}

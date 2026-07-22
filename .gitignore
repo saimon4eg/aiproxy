@@ -35,9 +35,10 @@ __debug_bin*
 
 # Local config
 .env
-.env.*
 copilot2api-darwin-arm64
 
 # copilot/provider credentials (bind-mounted into container)
 auth-data/
 providers.json
+/logs/
+/.codegraph/

@@ -14,7 +14,7 @@
 | 4 | **[HIGH]** | Step 1 добавляет `/messages` в `proxy.Handler` как passthrough. Но `proxy.Handler` всегда шлёт в Copilot, а Copilot `/messages` не поддерживает. 100% ошибок на этом пути. |
 | 5 | **[HIGH]** | `copilotModelEndpoints` (step 2) ссылается на несуществующий метод `c.copilotModelInfo(model)`. Кэш `providers.ModelsCache` хранит данные как `[]byte` — нет O(1) lookup по model ID. |
 | 6 | **[HIGH]** | Два модельных кэша (`models.Cache` в internal/models и `providers.ModelsCache`) расходятся: аугментация endpoints в step 4a меняет ТОЛЬКО `providers.ModelsCache`, но `proxy.Handler.resolveTargetEndpoint` читает `models.Cache` (который не аугментирован). |
-| 7 | **[HIGH]** | Openai-провайдер с `convert_to_anthropic=true` (step 4b): `/v1/messages` добавляется в model list, но handler возвращает 501 Not Implemented (`providers/router.go:70-72`). False advertising. |
+| 7 | **[HIGH]** | Openai-провайдер с `convert_to_messages=true` (step 4b): `/v1/messages` добавляется в model list, но handler возвращает 501 Not Implemented (`providers/router.go:70-72`). False advertising. |
 | 8 | **[MEDIUM]** | Streaming-путь в `makeCopilotResponsesToMessagesHandler` (step 3): `linguafrancaConvertStream` пишет Responses SSE, но `proxy.Handler` для `/messages` вернёт OpenAI/Copilot SSE или ошибку — Anthropic SSE от Copilot не получить. |
 
 ---
@@ -78,7 +78,7 @@
 
 ### [MEDIUM] `anthropic-version` для copilot-моделей
 - **План:** не упоминает.
-- **В коде:** `providers/router.go:286-288` — `setAuthHeader` устанавливает `anthropic-version: 2023-06-01` только для `p.Type == "anthropic"`. Для Copilot этот хедер не ставится (Copilot не Anthropic API). Корректно.
+- **В коде:** `providers/router.go:286-288` — `setAuthHeader` устанавливает `anthropic-version: 2023-06-01` только для `p.Type == "messages"`. Для Copilot этот хедер не ставится (Copilot не Anthropic API). Корректно.
 - **Но:** если `makeCopilotResponsesToMessagesHandler` создаёт новый запрос и роутит его на `copilotHandler` (proxy.Handler), то `proxy.Handler` → `upstream.Client.Do` → `copilot.AddHeaders` — тоже не добавляет `anthropic-version`. Всё корректно для Copilot upstream.
 
 ### [LOW] `copyHeaders` пропускает `x-api-key` и `anthropic-version` — корректно

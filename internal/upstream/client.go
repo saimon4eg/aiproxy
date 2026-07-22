@@ -72,7 +72,7 @@ func SetTransportProxy(t *http.Transport, proxyHost string) {
 // NewClient creates a new upstream Client.
 // If transport is non-nil it is used for the underlying http.Client;
 // otherwise a new Transport is created.
-func NewClient(tp TokenProvider, transport *http.Transport, debug ...bool) *Client {
+func NewClient(tp TokenProvider, transport http.RoundTripper, debug ...bool) *Client {
 	if transport == nil {
 		transport = NewTransport()
 	}

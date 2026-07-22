@@ -25,7 +25,7 @@ type Handler struct {
 	models   *models.Cache
 }
 
-func NewHandler(authClient upstream.TokenProvider, transport *http.Transport, mc *models.Cache, debug bool) *Handler {
+func NewHandler(authClient upstream.TokenProvider, transport http.RoundTripper, mc *models.Cache, debug bool) *Handler {
 	return &Handler{upstream: upstream.NewClient(authClient, transport, debug), models: mc}
 }
 

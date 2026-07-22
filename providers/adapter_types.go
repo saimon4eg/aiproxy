@@ -32,11 +32,18 @@ func RegisterAdapter(providerID string, a Adapter) {
 	adapters[providerID] = a
 }
 
-// GetAdapter returns the adapter for the given provider, or a no-op adapter.
-func GetAdapter(providerID string) Adapter {
+// GetAdapter returns the adapter matching type[subtype], falling back to type.
+// A provider with sub_type="deepseek" looks up "messages[deepseek]" first,
+// then "messages". Returns a no-op adapter when nothing matches.
+func GetAdapter(typ, subType string) Adapter {
 	adaptersMu.RLock()
 	defer adaptersMu.RUnlock()
-	if a, ok := adapters[providerID]; ok {
+	if subType != "" {
+		if a, ok := adapters[typ+"["+subType+"]"]; ok {
+			return a
+		}
+	}
+	if a, ok := adapters[typ]; ok {
 		return a
 	}
 	return &noopAdapter{}

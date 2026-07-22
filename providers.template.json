@@ -14,19 +14,16 @@
     {
       "provider_id": "anthropic",
       "name": "Anthropic (OAuth)",
-      "type": "anthropic",
+      "type": "messages",
       "auth": "oauth",
       "enabled": false,
       "base_url": "https://api.anthropic.com",
       "model_prefix": "anthropic",
       "proxy_host": "host.docker.internal:2080",
-      "convert_to_openai": true,
-      "convert_to_anthropic": false,
       "models": [
         {
           "id": "claude-opus-4-7",
           "name": "Claude Opus 4.7",
-          "supported_endpoints": ["/v1/messages"],
           "capabilities": {
             "type": "chat",
             "supports": {
@@ -35,7 +32,13 @@
               "parallel_tool_calls": true,
               "vision": true,
               "structured_outputs": true,
-              "reasoning_effort": ["low", "medium", "high", "xhigh", "max"],
+              "reasoning_effort": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
               "max_thinking_budget": 32000,
               "min_thinking_budget": 1024
             },
@@ -49,7 +52,6 @@
         {
           "id": "claude-sonnet-4-6",
           "name": "Claude Sonnet 4.6",
-          "supported_endpoints": ["/v1/messages"],
           "capabilities": {
             "type": "chat",
             "supports": {
@@ -58,7 +60,12 @@
               "parallel_tool_calls": true,
               "vision": true,
               "structured_outputs": true,
-              "reasoning_effort": ["low", "medium", "high", "max"],
+              "reasoning_effort": [
+                "low",
+                "medium",
+                "high",
+                "max"
+              ],
               "max_thinking_budget": 32000,
               "min_thinking_budget": 1024
             },
@@ -69,34 +76,33 @@
             }
           }
         }
-      ]
+      ],
+      "convert_to_responses": true,
+      "convert_to_messages": false
     },
     {
       "provider_id": "openai",
       "name": "OpenAI (OAuth)",
-      "type": "openai",
+      "type": "responses",
       "auth": "oauth",
       "enabled": false,
       "model_prefix": "openai",
       "proxy_host": "host.docker.internal:2080",
-      "convert_to_openai": false,
-      "convert_to_anthropic": true
+      "convert_to_responses": false,
+      "convert_to_messages": true
     },
     {
       "provider_id": "deepseek",
       "name": "DeepSeek",
-      "type": "anthropic",
+      "type": "messages",
       "base_url": "https://api.deepseek.com/anthropic",
       "api_key": "",
       "enabled": true,
       "model_prefix": "deepseek",
-      "convert_to_openai": true,
-      "convert_to_anthropic": false,
       "models": [
         {
           "id": "deepseek-v4-pro",
           "name": "DeepSeek V4 Pro",
-          "supported_endpoints": ["/v1/messages"],
           "capabilities": {
             "type": "chat",
             "supports": {
@@ -104,7 +110,10 @@
               "tool_calls": true,
               "parallel_tool_calls": true,
               "vision": false,
-              "reasoning_effort": ["high", "xhigh"]
+              "reasoning_effort": [
+                "high",
+                "xhigh"
+              ]
             },
             "limits": {
               "max_context_window_tokens": 1000000,
@@ -115,7 +124,6 @@
         {
           "id": "deepseek-v4-flash",
           "name": "DeepSeek V4 Flash",
-          "supported_endpoints": ["/v1/messages"],
           "capabilities": {
             "type": "chat",
             "supports": {
@@ -123,7 +131,10 @@
               "tool_calls": true,
               "parallel_tool_calls": true,
               "vision": false,
-              "reasoning_effort": ["high", "xhigh"]
+              "reasoning_effort": [
+                "high",
+                "xhigh"
+              ]
             },
             "limits": {
               "max_context_window_tokens": 1000000,
@@ -131,24 +142,24 @@
             }
           }
         }
-      ]
+      ],
+      "convert_to_responses": true,
+      "convert_to_messages": false,
+      "sub_type": "deepseek"
     },
     {
       "provider_id": "anthropic-api",
       "name": "Anthropic (API-ключ)",
-      "type": "anthropic",
+      "type": "messages",
       "base_url": "https://api.anthropic.com",
       "api_key": "",
       "proxy_host": "host.docker.internal:2080",
       "enabled": false,
       "model_prefix": "anthropic-api",
-      "convert_to_openai": true,
-      "convert_to_anthropic": false,
       "models": [
         {
           "id": "claude-opus-4-7",
           "name": "Claude Opus 4.7",
-          "supported_endpoints": ["/v1/messages"],
           "capabilities": {
             "type": "chat",
             "supports": {
@@ -157,7 +168,13 @@
               "parallel_tool_calls": true,
               "vision": true,
               "structured_outputs": true,
-              "reasoning_effort": ["low", "medium", "high", "xhigh", "max"],
+              "reasoning_effort": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
               "max_thinking_budget": 32000,
               "min_thinking_budget": 1024
             },
@@ -171,7 +188,6 @@
         {
           "id": "claude-sonnet-4-6",
           "name": "Claude Sonnet 4.6",
-          "supported_endpoints": ["/v1/messages"],
           "capabilities": {
             "type": "chat",
             "supports": {
@@ -180,7 +196,12 @@
               "parallel_tool_calls": true,
               "vision": true,
               "structured_outputs": true,
-              "reasoning_effort": ["low", "medium", "high", "max"],
+              "reasoning_effort": [
+                "low",
+                "medium",
+                "high",
+                "max"
+              ],
               "max_thinking_budget": 32000,
               "min_thinking_budget": 1024
             },
@@ -191,19 +212,391 @@
             }
           }
         }
-      ]
+      ],
+      "convert_to_responses": true,
+      "convert_to_messages": false
     },
     {
       "provider_id": "openai-api",
       "name": "OpenAI (API-ключ)",
-      "type": "openai",
+      "type": "responses",
       "base_url": "https://api.openai.com",
       "api_key": "",
       "proxy_host": "host.docker.internal:2080",
       "enabled": false,
       "model_prefix": "openai-api",
-      "convert_to_openai": false,
-      "convert_to_anthropic": true
+      "convert_to_responses": false,
+      "convert_to_messages": true
+    },
+    {
+      "provider_id": "zai-coding-msg",
+      "name": "Z.ai Coding — Anthropic Messages",
+      "type": "messages",
+      "base_url": "https://api.z.ai/api/anthropic",
+      "enabled": false,
+      "model_prefix": "zai-msg",
+      "convert_to_responses": true,
+      "convert_to_messages": false,
+      "models": [
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": false,
+              "reasoning_effort": [
+                "high",
+                "max"
+              ]
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        },
+        {
+          "id": "glm-5-turbo",
+          "name": "GLM-5-Turbo",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": false,
+              "reasoning_effort": [
+                "high"
+              ]
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        },
+        {
+          "id": "glm-4.7",
+          "name": "GLM-4.7",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": false,
+              "reasoning_effort": []
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        }
+      ],
+      "api_key": ""
+    },
+    {
+      "provider_id": "zai-coding-chat",
+      "name": "Z.ai Coding — Chat Completions",
+      "type": "chat",
+      "base_url": "https://api.z.ai/api/coding/paas/v4",
+      "enabled": false,
+      "model_prefix": "zai-chat",
+      "convert_to_responses": false,
+      "convert_to_messages": false,
+      "models": [
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 1000000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-5-turbo",
+          "name": "GLM-5-Turbo（极速）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-4.7",
+          "name": "GLM-4.7（高性价比）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": false,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        }
+      ],
+      "api_key": ""
+    },
+    {
+      "provider_id": "zai-payg",
+      "name": "Z.ai — Pay-As-You-Go (за токены)",
+      "type": "chat",
+      "base_url": "https://api.z.ai/api/paas/v4",
+      "proxy_host": "host.docker.internal:2080",
+      "enabled": false,
+      "model_prefix": "zai-payg",
+      "enabled_by_default": false,
+      "convert_to_responses": false,
+      "convert_to_messages": true,
+      "models": [
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2（旗舰·1M上下文）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 1000000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-5.1",
+          "name": "GLM-5.1",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-5",
+          "name": "GLM-5",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-5-turbo",
+          "name": "GLM-5-Turbo（极速）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-4.7",
+          "name": "GLM-4.7（高性价比）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": false,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-4.6",
+          "name": "GLM-4.6",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-4.5",
+          "name": "GLM-4.5（MoE·355B）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 128000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-4.5-air",
+          "name": "GLM-4.5-Air（MoE·106B）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 128000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-4-32b-0414-128k",
+          "name": "GLM-4-32B-0414-128K（经济型）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": false,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": false
+            },
+            "limits": {
+              "max_context_tokens": 128000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-5v-turbo",
+          "name": "GLM-5V-Turbo（多模态·编程）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": true
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-4.6v",
+          "name": "GLM-4.6V（多模态）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": true
+            },
+            "limits": {
+              "max_context_tokens": 200000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        },
+        {
+          "id": "glm-4.5v",
+          "name": "GLM-4.5V（多模态）",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "reasoning": true,
+              "tool_calls": true,
+              "streaming": true,
+              "vision": true
+            },
+            "limits": {
+              "max_context_tokens": 128000,
+              "max_output_tokens": 128000,
+              "max_temperature": 2.0
+            }
+          }
+        }
+      ],
+      "api_key": ""
     }
   ]
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/whtsky/copilot2api/providers/adapters"
 	"github.com/whtsky/copilot2api/providers/openai"
 	"github.com/whtsky/copilot2api/proxy"
+	"github.com/whtsky/copilot2api/requestlog"
 )
 
 var version = "dev"
@@ -90,6 +91,10 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(logger)
 
+	if *debug {
+		requestlog.Init("logs")
+	}
+
 	if *tokenDir == "" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -108,13 +113,14 @@ func main() {
 	ctx := context.Background()
 
 	transport := upstream.NewTransport()
-	upstreamClient := upstream.NewClient(authClient, transport, *debug)
+	wrappedTransport := requestlog.WrapTransport(transport)
+	upstreamClient := upstream.NewClient(authClient, wrappedTransport, *debug)
 	modelsCache := models.NewCache(upstreamClient, 5*time.Minute)
 
 	// Copilot handler — fallback for copilot-* models and unmatched routes.
-	proxyHandler := proxy.NewHandler(authClient, transport, modelsCache, *debug)
-	anthropicHandler := anthropic.NewHandler(authClient, transport, modelsCache, *debug)
-	geminiHandler := gemini.NewHandler(authClient, transport, modelsCache, *debug)
+	proxyHandler := proxy.NewHandler(authClient, wrappedTransport, modelsCache, *debug)
+	anthropicHandler := anthropic.NewHandler(authClient, wrappedTransport, modelsCache, *debug)
+	geminiHandler := gemini.NewHandler(authClient, wrappedTransport, modelsCache, *debug)
 
 	// Providers generalized router — all model routing goes through providers.json.
 	cfg, err := providers.LoadConfig("providers.json", proxyHandler)
@@ -140,9 +146,14 @@ func main() {
 	}
 
 	// Copilot GitHub OAuth / Copilot token flow (uses the proxy set above).
-	if err := authClient.EnsureAuthenticated(ctx); err != nil {
-		slog.Error("authentication failed", "error", err)
-		os.Exit(1)
+	// Skip if no copilot provider is enabled.
+	if cfg.IsCopilotEnabled() {
+		if err := authClient.EnsureAuthenticated(ctx); err != nil {
+			slog.Error("copilot authentication failed", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		slog.Info("copilot disabled — skipping copilot authentication")
 	}
 
 	go cfg.InitOAuth(func(providerID string, proxyHost string) (providers.TokenProvider, error) {
@@ -163,7 +174,7 @@ func main() {
 		return nil, fmt.Errorf("unknown oauth provider: %s", providerID)
 	})
 
-	providers.RegisterAdapter("deepseek", adapters.NewDeepSeekAdapter())
+	providers.RegisterAdapter("messages[deepseek]", adapters.NewDeepSeekAdapter())
 	providersCache := providers.NewModelsCache(cfg)
 
 	// Build mux.
@@ -251,11 +262,15 @@ func main() {
 		http.Redirect(w, r, target, http.StatusFound)
 	})
 
-	go func() {
-		slog.Debug("warming models cache")
-		modelsCache.Warm(ctx)
-		slog.Info("models cache warmed")
-	}()
+	if cfg.IsCopilotEnabled() {
+		go func() {
+			slog.Debug("warming copilot models cache")
+			modelsCache.Warm(ctx)
+			slog.Info("copilot models cache warmed")
+		}()
+	} else {
+		slog.Info("copilot disabled — skipping models cache warm")
+	}
 
 	// Plain HTTP on localhost. If deploying to a network, use a reverse proxy with TLS
 	// (nginx, Caddy) in front of aiproxy.

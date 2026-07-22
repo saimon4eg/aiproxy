@@ -87,21 +87,21 @@ func (c *Config) Route(r *http.Request) (http.Handler, error) {
 
 	// ── Native format → passthrough ──
 	switch {
-	case endpoint == "/v1/messages" && p.Type == "anthropic":
+	case endpoint == "/v1/messages" && p.Type == "messages":
 		return p.makePassthroughHandler("/v1/messages"), nil
-	case endpoint == "/v1/responses" && p.Type == "openai":
+	case endpoint == "/v1/responses" && p.Type == "responses":
 		return p.makePassthroughHandler("/v1/responses"), nil
-	case endpoint == "/v1/chat/completions" && (p.Type == "openai" || p.Type == "chat"):
+	case endpoint == "/v1/chat/completions" && (p.Type == "responses" || p.Type == "chat"):
 		return p.makePassthroughHandler("/v1/chat/completions"), nil
 	}
 
 	// ── Conversion ──
 	switch {
-	case endpoint == "/v1/messages" && p.Type == "openai" && p.ConvertToAnthropic:
+	case endpoint == "/v1/messages" && p.Type == "responses" && p.ConvertToMessages:
 		return p.makeMessagesToResponsesHandler(), nil
-	case endpoint == "/v1/responses" && p.Type == "anthropic" && p.ConvertToOpenAI:
+	case endpoint == "/v1/responses" && p.Type == "messages" && p.ConvertToResponses:
 		return p.makeResponsesToAnthropicHandler(), nil
-	case endpoint == "/v1/messages" && p.Type == "chat" && p.ConvertToAnthropic:
+	case endpoint == "/v1/messages" && p.Type == "chat" && p.ConvertToMessages:
 		return p.makeMessagesToChatHandler(), nil
 	}
 
@@ -137,7 +137,7 @@ func (p *ProviderConfig) makePassthroughHandler(upstreamEndpoint string) http.Ha
 		}
 
 		// Apply adapter patches.
-		if adapter := GetAdapter(p.ProviderID); adapter != nil {
+		if adapter := GetAdapter(p.Type, p.SubType); adapter != nil {
 			var reqMap map[string]interface{}
 			if err := json.Unmarshal(body, &reqMap); err == nil {
 				reqMap = adapter.PatchRequest(reqMap)
@@ -316,7 +316,7 @@ func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 		json.Unmarshal(body, &reqMeta)
 
 		// Apply adapter patches before conversion.
-		if adapter := GetAdapter(p.ProviderID); adapter != nil {
+		if adapter := GetAdapter(p.Type, p.SubType); adapter != nil {
 			var reqMap map[string]interface{}
 			if err := json.Unmarshal(body, &reqMap); err == nil {
 				reqMap = adapter.PatchRequest(reqMap)
@@ -708,7 +708,7 @@ func (p *ProviderConfig) makeMessagesToChatHandler() http.Handler {
 
 func (p *ProviderConfig) setAuthHeader(req *http.Request) error {
 	// Anthropic requires the version header regardless of auth mode (K4).
-	if p.Type == "anthropic" {
+	if p.Type == "messages" {
 		req.Header.Set("anthropic-version", "2023-06-01")
 	}
 	if tp := p.TokenProvider(); tp != nil {
@@ -720,13 +720,13 @@ func (p *ProviderConfig) setAuthHeader(req *http.Request) error {
 		return nil
 	}
 	switch p.Type {
-	case "anthropic":
+	case "messages":
 		if p.AuthHeader == "bearer" {
 			req.Header.Set("Authorization", "Bearer "+p.APIKey)
 		} else {
 			req.Header.Set("x-api-key", p.APIKey)
 		}
-	case "openai", "chat":
+	case "responses", "chat":
 		req.Header.Set("Authorization", "Bearer "+p.APIKey)
 	case "copilot":
 		slog.Warn("copilot provider reached setAuthHeader — routing bug", "provider", p.ProviderID)
@@ -807,22 +807,79 @@ func rewriteModel(body []byte, oldModel, newModel string) []byte {
 }
 
 // stripCopilotFields removes Anthropic-native fields that Copilot does not
-// support: context_management (context window hints). Modifies in-place
-// via JSON round-trip; returns original body on parse failure.
+// support: context_management (context window hints) and empty text content
+// blocks in assistant messages (Claude inserts {"text":"","type":"text"} between
+// thinking and tool_use blocks — valid in Anthropic API, rejected by Copilot).
+// Modifies in-place via JSON round-trip; returns original body on parse failure.
 func stripCopilotFields(body []byte) []byte {
+	slog.Info("stripCopilotFields called", "body_len", len(body), "has_messages", bytes.Contains(body, []byte(`"messages"`)), "has_input", bytes.Contains(body, []byte(`"input"`)))
+
 	var m map[string]any
 	if err := json.Unmarshal(body, &m); err != nil {
+		slog.Info("stripCopilotFields: unmarshal failed, returning unchanged")
 		return body
 	}
-	_, hasCM := m["context_management"]
-	if !hasCM {
+
+	changed := false
+
+	// Remove context_management at top level.
+	if _, hasCM := m["context_management"]; hasCM {
+		delete(m, "context_management")
+		changed = true
+	}
+
+	// Strip empty text blocks from assistant messages.
+	// Check BOTH "messages" and "input" keys (responses format uses "input").
+	msgKey := "messages"
+	msgs, ok := m[msgKey].([]any)
+	if !ok {
+		msgKey = "input"
+		msgs, ok = m[msgKey].([]any)
+	}
+	if ok {
+		for i, raw := range msgs {
+			msg, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			role, _ := msg["role"].(string)
+			if role != "assistant" {
+				continue
+			}
+			content, ok := msg["content"].([]any)
+			if !ok {
+				continue
+			}
+			filtered := make([]any, 0, len(content))
+			for _, block := range content {
+				b, ok := block.(map[string]any)
+				if !ok {
+					filtered = append(filtered, block)
+					continue
+				}
+				if b["type"] == "text" {
+					if text, _ := b["text"].(string); text == "" {
+						changed = true
+						continue
+					}
+				}
+				filtered = append(filtered, block)
+			}
+			msg["content"] = filtered
+			msgs[i] = msg
+		}
+	}
+
+	if !changed {
+		slog.Info("stripCopilotFields: no changes")
 		return body
 	}
-	delete(m, "context_management")
 	out, err := json.Marshal(m)
 	if err != nil {
+		slog.Info("stripCopilotFields: marshal failed, returning unchanged")
 		return body
 	}
+	slog.Info("stripCopilotFields: stripped empty text blocks", "old_len", len(body), "new_len", len(out))
 	return out
 }
 

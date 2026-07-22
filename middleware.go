@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/whtsky/copilot2api/providers"
+	"github.com/whtsky/copilot2api/requestlog"
 )
 
 // requestIDMiddleware adds a unique request ID to every request.
@@ -22,6 +23,8 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Request-ID", id)
 		// Store logger with request_id in context for downstream handlers.
 		ctx := providers.ContextWithLogger(r.Context(), slog.With("request_id", id))
+		// Store request_id for requestlog cross-correlation.
+		ctx = requestlog.ContextWithRequestID(ctx, id)
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})
@@ -44,36 +47,20 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 // latencyMiddleware logs request latency and status.
+// Also wraps the writer in a LoggedResponseWriter to capture the response for
+// the request log (proxy→user entry).
 func latencyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
-		next.ServeHTTP(rec, r)
+		reqID := requestlog.RequestIDFromContext(r.Context())
+		lw := requestlog.NewLoggedResponseWriter(w, reqID)
+		next.ServeHTTP(lw, r)
+		lw.Close() // writes proxy→user log entry + closes the file
 		slog.Info("request",
 			"method", r.Method,
 			"path", r.URL.Path,
-			"status", rec.statusCode,
+			"status", lw.Status(),
 			"latency_ms", time.Since(start).Milliseconds(),
 		)
 	})
-}
-
-// statusRecorder captures the HTTP status code.
-type statusRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (r *statusRecorder) WriteHeader(code int) {
-	r.statusCode = code
-	r.ResponseWriter.WriteHeader(code)
-}
-
-// Flush implements http.Flusher, delegating to the wrapped writer. Without it,
-// the statusRecorder hides the underlying Flusher and streaming handlers (SSE)
-// fail the w.(http.Flusher) assertion → "Streaming unsupported" / buffered output.
-func (r *statusRecorder) Flush() {
-	if f, ok := r.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
 }

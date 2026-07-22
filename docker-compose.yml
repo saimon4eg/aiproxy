@@ -10,7 +10,7 @@ services:
     ports:
       - "127.0.0.1:8081:7777"
     environment:
-      COPILOT2API_DEBUG: "${COPILOT2API_DEBUG:-false}"
+      COPILOT2API_DEBUG: "${COPILOT2API_DEBUG:-true}"
       COPILOT2API_TOKEN_DIR: "/home/aiproxy/.config/copilot2api"
     command: ["--debug"]
     extra_hosts:
@@ -18,5 +18,6 @@ services:
     volumes:
       - ./auth-data:/home/aiproxy/.config/copilot2api
       - ./providers.json:/app/providers.json:ro
+      - ./logs:/app/logs
     stdin_open: true
     tty: true
