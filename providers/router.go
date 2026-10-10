@@ -88,11 +88,11 @@ func (c *Config) Route(r *http.Request) (http.Handler, error) {
 	// ── Native format → passthrough ──
 	switch {
 	case endpoint == "/v1/messages" && p.Type == "messages":
-		return p.makePassthroughHandler("/v1/messages"), nil
+		return p.makePassthroughHandler(p.upstreamPath("/v1/messages")), nil
 	case endpoint == "/v1/responses" && p.Type == "responses":
-		return p.makePassthroughHandler("/v1/responses"), nil
+		return p.makePassthroughHandler(p.upstreamPath("/v1/responses")), nil
 	case endpoint == "/v1/chat/completions" && (p.Type == "responses" || p.Type == "chat"):
-		return p.makePassthroughHandler("/v1/chat/completions"), nil
+		return p.makePassthroughHandler(p.upstreamPath("/v1/chat/completions")), nil
 	}
 
 	// ── Conversion ──
@@ -161,11 +161,63 @@ func (p *ProviderConfig) makePassthroughHandler(upstreamEndpoint string) http.Ha
 
 		client := p.httpClient()
 
+		// Streaming requests must be proxied chunk-by-chunk, not buffered:
+		// io.ReadAll blocks until upstream closes the stream, but SSE providers
+		// (e.g. Moonshot) keep the connection open after the final event.
+		isStream := false
+		{
+			var reqMeta struct {
+				Stream bool `json:"stream"`
+			}
+			if json.Unmarshal(body, &reqMeta) == nil {
+				isStream = reqMeta.Stream
+			}
+		}
+
 		// Retry up to 3 times with exponential backoff.
 		var lastErr error
 		for attempt := 0; attempt < 3; attempt++ {
 			resp, err := client.Do(proxyReq)
 			if err == nil {
+				// Streaming: proxy the SSE stream through, flushing each line.
+				// Never buffer — upstream may hold the connection open after the
+				// terminal event, so exit on the SSE terminator rather than EOF.
+				if resp.StatusCode < 400 && (isStream || strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream")) {
+					copyHeaders(w.Header(), resp.Header)
+					w.WriteHeader(resp.StatusCode)
+					flusher, _ := w.(http.Flusher)
+					scanner := bufio.NewScanner(resp.Body)
+					scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+					sawMessageStop := false
+					for scanner.Scan() {
+						line := scanner.Text()
+						if _, werr := w.Write([]byte(line + "\n")); werr != nil {
+							resp.Body.Close()
+							return
+						}
+						if flusher != nil {
+							flusher.Flush()
+						}
+						trimmed := strings.TrimSpace(line)
+						if trimmed == "data: [DONE]" {
+							break
+						}
+						// Anthropic SSE: "event: message_stop" is followed by its
+						// "data: {...}" payload and a blank terminator line. Breaking
+						// on the event line itself truncates the event — clients that
+						// require message_stop fail mid-stream. Forward the whole
+						// event, then stop (upstream may hold the socket open after
+						// the terminal event).
+						if trimmed == "event: message_stop" {
+							sawMessageStop = true
+						} else if sawMessageStop && trimmed == "" {
+							break
+						}
+					}
+					resp.Body.Close()
+					return
+				}
+
 				defer resp.Body.Close()
 				respBody, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
 				if err != nil {
@@ -335,7 +387,7 @@ func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 		isStream := reqMeta.Stream
 
 		// Build upstream request.
-		targetURL := strings.TrimRight(p.BaseURL, "/") + "/v1/messages"
+		targetURL := strings.TrimRight(p.BaseURL, "/") + p.upstreamPath("/v1/messages")
 		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(messagesBody))
 		if err != nil {
 			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to create upstream request")
@@ -446,7 +498,7 @@ func (p *ProviderConfig) makeMessagesToResponsesHandler() http.Handler {
 		}
 
 		isStream := msgReq.Stream
-		targetURL := strings.TrimRight(p.BaseURL, "/") + "/v1/responses"
+		targetURL := strings.TrimRight(p.BaseURL, "/") + p.upstreamPath("/v1/responses")
 		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(reqBody))
 		if err != nil {
 			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to create upstream request")
@@ -591,7 +643,7 @@ func (p *ProviderConfig) makeMessagesToChatHandler() http.Handler {
 		}
 
 		isStream := msgReq.Stream
-		targetURL := strings.TrimRight(p.BaseURL, "/") + "/v1/chat/completions"
+		targetURL := strings.TrimRight(p.BaseURL, "/") + p.upstreamPath("/v1/chat/completions")
 		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(reqBody))
 		if err != nil {
 			writeError(w, r.URL.Path, http.StatusInternalServerError, "failed to create upstream request")

@@ -35,11 +35,26 @@ type ProviderConfig struct {
 	ConvertToResponses bool              `json:"convert_to_responses"`
 	ConvertToMessages  bool              `json:"convert_to_messages"`
 	AuthHeader         string            `json:"auth_header,omitempty"` // "x-api-key" (default) or "bearer"
+	APIPrefix          string            `json:"api_prefix,omitempty"` // API version prefix, default "/v1"
+	DisableKeepAlive   bool              `json:"disable_keepalive,omitempty"` // disable HTTP keep-alive (workaround for upstream HTTP/2 stream-after-nonstream bug)
 	Models                     []json.RawMessage `json:"models,omitempty"`
 
 	tokenProvider TokenProvider
 	transport     *http.Transport
 	client        *http.Client
+}
+
+// upstreamPath replaces the standard /v1 prefix with the provider's API prefix.
+// Default is "/v1" — only override for non-standard APIs (e.g. Z.ai uses "/v4").
+func (p *ProviderConfig) upstreamPath(standardPath string) string {
+	if p.APIPrefix == "" || p.APIPrefix == "/v1" {
+		return standardPath
+	}
+	prefix := p.APIPrefix
+	if !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	return prefix + strings.TrimPrefix(standardPath, "/v1")
 }
 
 // SetTokenProvider attaches an OAuth token provider.
@@ -66,6 +81,7 @@ func (p *ProviderConfig) TokenProvider() TokenProvider {
 func (p *ProviderConfig) initHTTPClient() {
 	p.transport = &http.Transport{
 		ResponseHeaderTimeout: 5 * time.Minute,
+		DisableKeepAlives:     p.DisableKeepAlive,
 	}
 	if p.ProxyHost != "" {
 		// proxy_host is validated in Validate(); parse cannot fail here.
@@ -124,6 +140,10 @@ func LoadConfig(path string, copilotHandler http.Handler) (*Config, error) {
 		}
 		if p.ProviderID == "" {
 			continue
+		}
+		// Default API prefix to /v1 if not set.
+		if p.APIPrefix == "" {
+			p.APIPrefix = "/v1"
 		}
 		cfg.Providers = append(cfg.Providers, *p)
 	}
