@@ -1,0 +1,19 @@
+{
+ "cache_control": {
+  "type": "ephemeral"
+ },
+ "max_tokens": 32000,
+ "messages": [
+  {
+   "content": [
+    {
+     "text": "hi",
+     "type": "text"
+    }
+   ],
+   "role": "user"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "service_tier": "standard"
+}

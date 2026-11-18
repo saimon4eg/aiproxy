@@ -1,0 +1,35 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "q1",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "a1",
+     "type": "output_text"
+    }
+   ],
+   "role": "assistant",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "q2",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

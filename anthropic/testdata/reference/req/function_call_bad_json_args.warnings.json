@@ -1,0 +1,7 @@
+[
+ {
+  "action": "changed",
+  "field": "input[1].function_call.arguments",
+  "message": "malformed JSON arguments, replaced with empty object"
+ }
+]

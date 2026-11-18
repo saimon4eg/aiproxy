@@ -1,0 +1,20 @@
+{
+ "input": [
+  {
+   "id": "w1",
+   "status": "completed",
+   "type": "web_search_call"
+  },
+  {
+   "content": [
+    {
+     "text": "n",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

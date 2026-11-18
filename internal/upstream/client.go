@@ -25,10 +25,24 @@ type TokenProvider interface {
 	GetBaseURL() string
 }
 
+// GitHubTokenProvider supplies the long-lived GitHub OAuth token used by
+// Copilot's developer CLI model-catalog fallback.
+type GitHubTokenProvider interface {
+	GetGitHubToken(ctx context.Context) (string, error)
+}
+
 // Client makes requests to the upstream Copilot API.
 type Client struct {
 	TokenProvider TokenProvider
 	HTTPClient    *http.Client
+
+	// DefaultContextTier is injected as the top-level "contextTier" field of
+	// POST bodies sent to OpenAI-compatible endpoints (/responses,
+	// /chat/completions). Empty disables injection.
+	DefaultContextTier string
+	// LongContextChecker gates the injection per model ID taken from the body.
+	// When nil, injection is unconditional (forced mode).
+	LongContextChecker func(modelID string) bool
 }
 
 // NewTransport creates a shared http.Transport suitable for upstream requests.
@@ -93,6 +107,7 @@ type Request struct {
 	Body        interface{} // []byte, io.Reader, or JSON-marshalable struct; nil for no body
 	QueryString string      // raw query string to append (without leading '?')
 	Stream      bool        // if true, returns *http.Response instead of reading body
+	ModelAccess bool        // use Copilot's metadata headers for model catalog requests
 	ExtraHeaders map[string]string // additional headers to set after copilot headers
 }
 
@@ -100,7 +115,6 @@ const (
 	defaultNonStreamTimeout = 5 * time.Minute
 	maxErrBody              = 1 << 20  // 1MB for error bodies
 	maxRespBody             = 50 << 20 // 50MB for response bodies
-	MaxRequestBody          = 10 << 20 // 10MB for incoming request bodies
 )
 
 // Do executes a request against the upstream Copilot API.
@@ -113,7 +127,29 @@ func (c *Client) Do(ctx context.Context, r Request) (*http.Response, []byte, err
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get valid token: %w", err)
 	}
+	return c.do(ctx, r, token, "")
+}
 
+// DoModelAccessWithGitHubToken retries the model catalog request using the
+// long-lived GitHub OAuth token and the developer CLI integration identity.
+// Some Copilot accounts reject the normal conversation identity for /models.
+func (c *Client) DoModelAccessWithGitHubToken(ctx context.Context, r Request) (*http.Response, []byte, error) {
+	if r.Method != http.MethodGet || r.Endpoint != "/models" {
+		return nil, nil, fmt.Errorf("GitHub OAuth model-access fallback only supports GET /models")
+	}
+	provider, ok := c.TokenProvider.(GitHubTokenProvider)
+	if !ok {
+		return nil, nil, fmt.Errorf("token provider does not expose a GitHub OAuth token")
+	}
+	token, err := provider.GetGitHubToken(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get GitHub OAuth token: %w", err)
+	}
+	r.ModelAccess = true
+	return c.do(ctx, r, token, "copilot-developer-cli")
+}
+
+func (c *Client) do(ctx context.Context, r Request, token string, integrationID string) (*http.Response, []byte, error) {
 	// Resolve body to io.Reader
 	var bodyReader io.Reader
 	switch v := r.Body.(type) {
@@ -138,6 +174,13 @@ func (c *Client) Do(ctx context.Context, r Request) (*http.Response, []byte, err
 		upstreamURL += "?" + r.QueryString
 	}
 
+	// Inject contextTier only for OpenAI-compatible upstream endpoints.
+	// Copilot's native Anthropic /v1/messages schema rejects this
+	// Copilot-specific field with "Extra inputs are not permitted".
+	if (r.Method == "" || r.Method == "POST") && supportsContextTierEndpoint(r.Endpoint) {
+		bodyReader = c.injectContextTier(bodyReader)
+	}
+
 	// Apply timeout for non-streaming requests
 	reqCtx := ctx
 	var cancel context.CancelFunc
@@ -156,7 +199,11 @@ func (c *Client) Do(ctx context.Context, r Request) (*http.Response, []byte, err
 		return nil, nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	copilot.AddHeaders(req, token)
+	if r.ModelAccess {
+		copilot.AddModelAccessHeaders(req, token, integrationID)
+	} else {
+		copilot.AddHeaders(req, token)
+	}
 
 	if r.Stream {
 		req.Header.Set("Accept", "text/event-stream")
@@ -204,4 +251,84 @@ func parseProxyURL(raw string) (*url.URL, error) {
 		raw = "http://" + raw
 	}
 	return url.Parse(raw)
+}
+
+// ContextTierOff is the context_tier value that disables injection.
+const ContextTierOff = "off"
+
+// ConfigureContextTier applies the context_tier setting of the copilot
+// provider:
+//
+//	""       auto: inject "long_context" only for models the checker approves
+//	"off"    never inject
+//	<value>  force that value for every model on the supported endpoints
+//
+// Call once at startup, before serving requests.
+func (c *Client) ConfigureContextTier(mode string, longContext func(modelID string) bool) {
+	switch strings.TrimSpace(mode) {
+	case "":
+		c.DefaultContextTier = "long_context"
+		c.LongContextChecker = longContext
+	case ContextTierOff:
+		c.DefaultContextTier = ""
+		c.LongContextChecker = nil
+	default:
+		c.DefaultContextTier = strings.TrimSpace(mode)
+		c.LongContextChecker = nil
+	}
+}
+
+// supportsContextTierEndpoint reports whether the endpoint accepts Copilot's
+// contextTier request extension. The native Anthropic Messages endpoint does
+// not: it validates the request against Anthropic's schema and rejects the
+// extra top-level field. Keep this allowlist endpoint-based rather than
+// model-based because a model can advertise more than one endpoint family.
+func supportsContextTierEndpoint(endpoint string) bool {
+	endpoint = strings.TrimPrefix(endpoint, "/v1")
+	return endpoint == "/responses" || endpoint == "/chat/completions"
+}
+
+// injectContextTier reads the body, injects contextTier if absent, and returns
+// a new reader. Returns the original reader unchanged if injection is disabled,
+// the body is nil, or the body is not valid JSON. When LongContextChecker is
+// set, injection only happens if the checker approves the model in the body.
+func (c *Client) injectContextTier(body io.Reader) io.Reader {
+	if c.DefaultContextTier == "" || body == nil {
+		return body
+	}
+
+	data, err := io.ReadAll(body)
+	if err != nil || len(data) == 0 {
+		if len(data) > 0 {
+			return bytes.NewReader(data)
+		}
+		return body
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return bytes.NewReader(data)
+	}
+	if _, exists := raw["contextTier"]; exists {
+		return bytes.NewReader(data)
+	}
+
+	if c.LongContextChecker != nil {
+		var modelID string
+		if m, ok := raw["model"]; ok {
+			_ = json.Unmarshal(m, &modelID)
+		}
+		if !c.LongContextChecker(modelID) {
+			return bytes.NewReader(data)
+		}
+	}
+
+	tierJSON, _ := json.Marshal(c.DefaultContextTier)
+	raw["contextTier"] = tierJSON
+
+	modified, err := json.Marshal(raw)
+	if err != nil {
+		return bytes.NewReader(data)
+	}
+	return bytes.NewReader(modified)
 }

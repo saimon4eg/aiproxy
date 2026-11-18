@@ -75,8 +75,12 @@ func (c *ModelsCache) Refresh(ctx context.Context) error {
 			continue
 		}
 		for _, m := range models {
-			// Add prefix to model ID.
-			m.ID = p.ModelPrefix + "-" + m.ID
+			// Add prefix to model ID. A claude-cli provider keeps native ids:
+			// Router hands the model straight to the CLI, so the advertised id
+			// must be the one that routes back here.
+			if p.Type != "claude-cli" {
+				m.ID = p.ModelPrefix + "-" + m.ID
+			}
 			// Object is always "model"; vendor defaults to provider_id (override if set).
 			m.Object = "model"
 			if m.Vendor == "" {
@@ -98,7 +102,7 @@ func (c *ModelsCache) Refresh(ctx context.Context) error {
 				copilotModels[i].ID = "copilot-" + copilotModels[i].ID
 			}
 			// Normalise: /responses → /v1/responses, drop ws: endpoints.
-			// Then augment: if /messages native → add /responses (via linguafranca),
+			// Then augment: if /messages native → add /responses (via Go converters),
 			// and vice versa.   — applies everywhere.
 			for i := range copilotModels {
 				eps := copilotModels[i].SupportedEndpoints
@@ -184,8 +188,13 @@ func FetchModels(ctx context.Context, p ProviderConfig) ([]ModelInfo, error) {
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	if p.ProxyHost != "" {
-		// proxy_host is validated in Validate(); parse cannot fail here.
-		u, _ := upstream.ParseProxyURL(p.ProxyHost)
+		// A configured proxy is always applied — never a silent direct fallback.
+		// Validate() already parsed this at startup; a failure here must not turn
+		// into a direct connection around the proxy.
+		u, err := upstream.ParseProxyURL(p.ProxyHost)
+		if err != nil {
+			return nil, fmt.Errorf("provider %s: invalid proxy_host %q: %w", p.ProviderID, p.ProxyHost, err)
+		}
 		client.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
 	}
 	resp, err := client.Do(req)
@@ -256,9 +265,9 @@ func FetchCopilotModels(ctx context.Context, cfg *Config) ([]ModelInfo, error) {
 // populateEndpoints adds supported endpoints based on provider flags.
 func populateEndpoints(m *ModelInfo, p ProviderConfig) {
 	switch p.Type {
-	case "messages":
+	case "messages", "claude-cli":
 		// Always: /v1/messages (native).
-		// convert_to_responses=true: also /v1/responses (via linguafranca).
+		// convert_to_responses=true: also /v1/responses (via Go converters).
 		// Chat Completions is NOT added — router always returns 400.
 		if p.ConvertToResponses {
 			m.SupportedEndpoints = appendIfMissing(m.SupportedEndpoints, "/v1/responses")
@@ -318,14 +327,10 @@ func supportsEndpointNorm(endpoints []string, target string) bool {
 
 // mergeRawMessages merges multiple json.RawMessage into one JSON array.
 func mergeRawMessages(msgs []json.RawMessage) json.RawMessage {
-	if len(msgs) == 0 {
-		return json.RawMessage("[]")
-	}
-	if len(msgs) == 1 {
-		return msgs[0]
-	}
-	// Build a JSON array from individual messages.
-	var buf []byte
+	// Always produce an array. An earlier early-return for the single-element
+	// case emitted the bare object, which fails to unmarshal into []ModelInfo —
+	// so a provider with exactly one declared model vanished from /v1/models.
+	buf := make([]byte, 0, 64)
 	buf = append(buf, '[')
 	for i, m := range msgs {
 		if i > 0 {

@@ -1,0 +1,7 @@
+[
+ {
+  "action": "changed",
+  "field": "input[2].role",
+  "message": "instruction message was hoisted to Anthropic system; original position not preserved (mid-conversation system messages require Claude Opus 4.8)"
+ }
+]

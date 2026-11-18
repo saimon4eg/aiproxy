@@ -1,0 +1,90 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "w",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "encrypted_content": "S",
+   "id": "rs_1",
+   "summary": [
+    {
+     "text": "t",
+     "type": "summary_text"
+    }
+   ],
+   "type": "reasoning"
+  },
+  {
+   "arguments": "{}",
+   "call_id": "c1",
+   "name": "get_weather",
+   "type": "function_call"
+  },
+  {
+   "call_id": "c1",
+   "output": "ok",
+   "type": "function_call_output"
+  },
+  {
+   "content": [
+    {
+     "text": "done",
+     "type": "output_text"
+    }
+   ],
+   "role": "assistant",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "more",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "instructions": "be brief",
+ "max_output_tokens": 100,
+ "metadata": {
+  "a": "b"
+ },
+ "model": "deepseek-v4-pro",
+ "parallel_tool_calls": true,
+ "reasoning": {
+  "effort": "high",
+  "summary": "auto"
+ },
+ "stream": true,
+ "temperature": 0.2,
+ "tool_choice": "auto",
+ "tools": [
+  {
+   "description": "Get weather",
+   "name": "get_weather",
+   "parameters": {
+    "properties": {
+     "city": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "city"
+    ],
+    "type": "object"
+   },
+   "strict": false,
+   "type": "function"
+  }
+ ],
+ "top_p": 0.8
+}

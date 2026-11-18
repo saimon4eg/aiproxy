@@ -1,0 +1,26 @@
+{
+ "cache_control": {
+  "type": "ephemeral"
+ },
+ "max_tokens": 32000,
+ "messages": [
+  {
+   "content": [
+    {
+     "text": "look",
+     "type": "text"
+    },
+    {
+     "source": {
+      "data": "AAAA",
+      "media_type": "image/png",
+      "type": "base64"
+     },
+     "type": "image"
+    }
+   ],
+   "role": "user"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

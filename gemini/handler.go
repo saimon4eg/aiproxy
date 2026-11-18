@@ -25,8 +25,8 @@ type Handler struct {
 	models   *models.Cache
 }
 
-func NewHandler(authClient upstream.TokenProvider, transport http.RoundTripper, mc *models.Cache, debug bool) *Handler {
-	return &Handler{upstream: upstream.NewClient(authClient, transport, debug), models: mc}
+func NewHandler(uc *upstream.Client, mc *models.Cache) *Handler {
+	return &Handler{upstream: uc, models: mc}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +84,6 @@ func (h *Handler) handleGenerateContent(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, upstream.MaxRequestBody)
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ARGUMENT", fmt.Sprintf("Invalid request body: %v", err))
@@ -220,7 +219,6 @@ func (h *Handler) handleStreamingGenerateContent(w http.ResponseWriter, r *http.
 }
 
 func (h *Handler) handleCountTokens(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, upstream.MaxRequestBody)
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ARGUMENT", fmt.Sprintf("Invalid request body: %v", err))

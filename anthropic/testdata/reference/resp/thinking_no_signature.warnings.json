@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "content[0].content_block",
+  "message": "unknown content block type"
+ }
+]

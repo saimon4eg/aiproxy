@@ -1,0 +1,19 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "f",
+     "type": "input_text"
+    },
+    {
+     "file_id": "file-1",
+     "type": "input_file"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

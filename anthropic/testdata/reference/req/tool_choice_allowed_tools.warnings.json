@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "tool_choice.allowed_tools",
+  "message": "not representable in Anthropic"
+ }
+]

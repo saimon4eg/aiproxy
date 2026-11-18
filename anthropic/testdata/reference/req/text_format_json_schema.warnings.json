@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "text.format.name",
+  "message": "not supported in Anthropic"
+ }
+]

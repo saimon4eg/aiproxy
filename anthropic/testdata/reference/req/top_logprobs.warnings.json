@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "top_logprobs",
+  "message": "not supported in Anthropic"
+ }
+]

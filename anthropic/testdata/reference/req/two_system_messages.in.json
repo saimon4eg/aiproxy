@@ -1,0 +1,35 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "s1",
+     "type": "input_text"
+    }
+   ],
+   "role": "system",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "s2",
+     "type": "input_text"
+    }
+   ],
+   "role": "developer",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "hi",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

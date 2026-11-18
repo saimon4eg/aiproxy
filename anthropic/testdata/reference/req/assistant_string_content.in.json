@@ -1,0 +1,20 @@
+{
+ "input": [
+  {
+   "content": "plain user",
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "content": "plain assistant",
+   "role": "assistant",
+   "type": "message"
+  },
+  {
+   "content": "again",
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

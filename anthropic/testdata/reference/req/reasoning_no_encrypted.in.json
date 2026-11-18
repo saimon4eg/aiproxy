@@ -1,0 +1,45 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "q",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "id": "rs_1",
+   "summary": [
+    {
+     "text": "t",
+     "type": "summary_text"
+    }
+   ],
+   "type": "reasoning"
+  },
+  {
+   "content": [
+    {
+     "text": "a",
+     "type": "output_text"
+    }
+   ],
+   "role": "assistant",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "n",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

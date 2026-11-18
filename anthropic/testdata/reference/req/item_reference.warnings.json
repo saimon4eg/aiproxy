@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "input[0].item_reference",
+  "message": "not supported in Anthropic"
+ }
+]

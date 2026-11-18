@@ -37,8 +37,14 @@ __debug_bin*
 .env
 copilot2api-darwin-arm64
 
+# Backups and leftovers
+*.bak
+*.orig
+*.rej
+
 # copilot/provider credentials (bind-mounted into container)
 auth-data/
 providers.json
 /logs/
 /.codegraph/
+.hermes/

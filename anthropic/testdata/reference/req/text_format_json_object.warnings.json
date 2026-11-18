@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "text.format",
+  "message": "json_object format not supported in Anthropic"
+ }
+]

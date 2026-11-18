@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "truncation",
+  "message": "not supported in Anthropic"
+ }
+]

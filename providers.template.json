@@ -1,6 +1,87 @@
 {
   "providers": [
     {
+      "provider_id": "anthropic-claude",
+      "name": "Anthropic Claude (Subscription)",
+      "type": "claude-cli",
+      "auth": "oauth",
+      "enabled": false,
+      "base_url": "https://api.anthropic.com",
+      "model_prefix": "claude",
+      "proxy_host": "host.docker.internal:2080",
+      "convert_to_responses": true,
+      "models": [
+        {
+          "id": "claude-fable-5-1",
+          "name": "Claude Fable 5.1",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        },
+        {
+          "id": "claude-sonnet-5-5",
+          "name": "Claude Sonnet 5.5",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        },
+        {
+          "id": "claude-opus-5-5",
+          "name": "Claude Opus 5.5",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        },
+        {
+          "id": "claude-haiku-5-5",
+          "name": "Claude Haiku 5.5",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        }
+      ]
+    },
+    {
       "provider_id": "copilot",
       "name": "GitHub Copilot",
       "type": "copilot",
@@ -9,76 +90,11 @@
       "model_prefix": "copilot",
       "integration_id": "copilot-developer-cli",
       "api_version": "2026-06-01",
+      "context_tier": "",
+      "model_aliases": {
+        "codex-auto-review": "gpt-5.6-luna"
+      },
       "proxy_host": "host.docker.internal:2080"
-    },
-    {
-      "provider_id": "anthropic",
-      "name": "Anthropic (OAuth)",
-      "type": "messages",
-      "auth": "oauth",
-      "enabled": false,
-      "base_url": "https://api.anthropic.com",
-      "model_prefix": "anthropic",
-      "proxy_host": "host.docker.internal:2080",
-      "models": [
-        {
-          "id": "claude-opus-4-7",
-          "name": "Claude Opus 4.7",
-          "capabilities": {
-            "type": "chat",
-            "supports": {
-              "streaming": true,
-              "tool_calls": true,
-              "parallel_tool_calls": true,
-              "vision": true,
-              "structured_outputs": true,
-              "reasoning_effort": [
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "max"
-              ],
-              "max_thinking_budget": 32000,
-              "min_thinking_budget": 1024
-            },
-            "limits": {
-              "max_context_window_tokens": 264000,
-              "max_output_tokens": 64000,
-              "max_prompt_tokens": 200000
-            }
-          }
-        },
-        {
-          "id": "claude-sonnet-4-6",
-          "name": "Claude Sonnet 4.6",
-          "capabilities": {
-            "type": "chat",
-            "supports": {
-              "streaming": true,
-              "tool_calls": true,
-              "parallel_tool_calls": true,
-              "vision": true,
-              "structured_outputs": true,
-              "reasoning_effort": [
-                "low",
-                "medium",
-                "high",
-                "max"
-              ],
-              "max_thinking_budget": 32000,
-              "min_thinking_budget": 1024
-            },
-            "limits": {
-              "max_context_window_tokens": 264000,
-              "max_output_tokens": 64000,
-              "max_prompt_tokens": 200000
-            }
-          }
-        }
-      ],
-      "convert_to_responses": true,
-      "convert_to_messages": false
     },
     {
       "provider_id": "openai",
@@ -158,8 +174,8 @@
       "model_prefix": "anthropic-api",
       "models": [
         {
-          "id": "claude-opus-4-7",
-          "name": "Claude Opus 4.7",
+          "id": "claude-fable-5-1",
+          "name": "Claude Fable 5.1",
           "capabilities": {
             "type": "chat",
             "supports": {
@@ -172,22 +188,18 @@
                 "low",
                 "medium",
                 "high",
-                "xhigh",
                 "max"
-              ],
-              "max_thinking_budget": 32000,
-              "min_thinking_budget": 1024
+              ]
             },
             "limits": {
-              "max_context_window_tokens": 264000,
-              "max_output_tokens": 64000,
-              "max_prompt_tokens": 200000
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
             }
           }
         },
         {
-          "id": "claude-sonnet-4-6",
-          "name": "Claude Sonnet 4.6",
+          "id": "claude-opus-5-5",
+          "name": "Claude Opus 5.5",
           "capabilities": {
             "type": "chat",
             "supports": {
@@ -201,14 +213,59 @@
                 "medium",
                 "high",
                 "max"
-              ],
-              "max_thinking_budget": 32000,
-              "min_thinking_budget": 1024
+              ]
             },
             "limits": {
-              "max_context_window_tokens": 264000,
-              "max_output_tokens": 64000,
-              "max_prompt_tokens": 200000
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        },
+        {
+          "id": "claude-sonnet-5-5",
+          "name": "Claude Sonnet 5.5",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true,
+              "structured_outputs": true,
+              "reasoning_effort": [
+                "low",
+                "medium",
+                "high",
+                "max"
+              ]
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
+            }
+          }
+        },
+        {
+          "id": "claude-haiku-5-5",
+          "name": "Claude Haiku 5.5",
+          "capabilities": {
+            "type": "chat",
+            "supports": {
+              "streaming": true,
+              "tool_calls": true,
+              "parallel_tool_calls": true,
+              "vision": true,
+              "structured_outputs": true,
+              "reasoning_effort": [
+                "low",
+                "medium",
+                "high",
+                "max"
+              ]
+            },
+            "limits": {
+              "max_context_window_tokens": 1000000,
+              "max_output_tokens": 128000
             }
           }
         }
@@ -375,7 +432,6 @@
       "proxy_host": "host.docker.internal:2080",
       "enabled": false,
       "model_prefix": "zai-payg",
-      "enabled_by_default": false,
       "convert_to_responses": false,
       "convert_to_messages": true,
       "models": [

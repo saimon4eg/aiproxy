@@ -1,0 +1,23 @@
+{
+ "cache_control": {
+  "type": "ephemeral"
+ },
+ "max_tokens": 32000,
+ "messages": [
+  {
+   "content": [
+    {
+     "text": "w",
+     "type": "text"
+    },
+    {
+     "content": "ok",
+     "tool_use_id": "zz",
+     "type": "tool_result"
+    }
+   ],
+   "role": "user"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

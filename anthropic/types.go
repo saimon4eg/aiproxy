@@ -30,6 +30,11 @@ type AnthropicMessagesRequest struct {
 type AnthropicThinking struct {
 	Type         string `json:"type"` // "enabled" or "adaptive"
 	BudgetTokens *int   `json:"budget_tokens,omitempty"`
+	// Display selects how much of the reasoning the model returns. On 4.7+ it
+	// defaults to "omitted", which makes every thinking block arrive with an
+	// empty text (signature only) — the client then shows no reasoning at all.
+	// It must be carried through, not dropped.
+	Display string `json:"display,omitempty"`
 }
 
 // AnthropicOutputConfig represents output configuration

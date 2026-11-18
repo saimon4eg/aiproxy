@@ -14,6 +14,7 @@ import (
 	"github.com/whtsky/copilot2api/anthropic"
 	"github.com/whtsky/copilot2api/internal/modelid"
 	"github.com/whtsky/copilot2api/internal/sse"
+	"github.com/whtsky/copilot2api/requestlog"
 )
 
 // Route determines the handler for an incoming request based on model prefix and endpoint.
@@ -24,8 +25,21 @@ func (c *Config) Route(r *http.Request) (http.Handler, error) {
 	}
 	endpoint := r.URL.Path
 
+	// ── model aliases (copilot): pseudo ids such as Codex's codex-auto-review ──
+	if target := c.resolveCopilotAlias(model, endpoint); target != "" {
+		slog.Info("model routing", "from", model, "to", target, "endpoint", endpoint)
+		body = rewriteModel(body, model, target)
+		model = target
+	}
+
 	// ── copilot-* → capability-driven routing ──
 	if strings.HasPrefix(model, "copilot-") {
+		// With no enabled copilot provider there is no credential to attach, and
+		// the handler would answer an opaque 500. Say what is actually wrong.
+		if !c.IsCopilotEnabled() {
+			recordRefusal(r.Context(), "provider_disabled", "provider copilot is disabled")
+			return nil, fmt.Errorf("provider copilot is disabled")
+		}
 		stripped, newBody := stripPrefix(body, model, "copilot-")
 		// Drop UI-only display suffix (e.g. "[1m]").
 		if clean := modelid.StripDisplayContextSuffixes(stripped); clean != stripped {
@@ -76,19 +90,40 @@ func (c *Config) Route(r *http.Request) (http.Handler, error) {
 	// ── Find provider ──
 	p := c.FindProvider(model)
 	if p == nil {
+		reason := "unknown_model"
+		if c.disabledProviderFor(model) != "" {
+			reason = "provider_disabled"
+		}
+		recordRefusal(r.Context(), reason, "unknown model: "+model)
 		return nil, fmt.Errorf("unknown model: %s", model)
 	}
+	recordRouting(r.Context(), p.ProviderID, model)
 
 	// ── Strip provider prefix from model ──
-	stripped, newBody := stripPrefix(body, model, p.ModelPrefix+"-")
-	_ = stripped // used in logs, the important part is the modified body
-	r.Body = io.NopCloser(bytes.NewReader(newBody))
-	r.ContentLength = int64(len(newBody))
+	// A claude-cli provider keeps the full id: native maps "claude-sonnet-5-5"
+	// itself, and stripping the shared "claude-" prefix would hand it
+	// "sonnet-5-5", which is not a model it knows.
+	if p.Type != "claude-cli" {
+		stripped, newBody := stripPrefix(body, model, p.ModelPrefix+"-")
+		recordResolvedModel(r.Context(), stripped)
+		r.Body = io.NopCloser(bytes.NewReader(newBody))
+		r.ContentLength = int64(len(newBody))
+	} else {
+		// The body was consumed by readBodyAndModel; the transport needs it whole
+		// and with the model id untouched.
+		recordResolvedModel(r.Context(), model)
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+	}
 
 	// ── Native format → passthrough ──
 	switch {
 	case endpoint == "/v1/messages" && p.Type == "messages":
 		return p.makePassthroughHandler(p.upstreamPath("/v1/messages")), nil
+	case endpoint == "/v1/messages" && p.Type == "claude-cli":
+		// The CLI speaks Anthropic natively, so the client's own format is the
+		// transport's input: no conversion on either side.
+		return p.makeClaudeCLIHandler(), nil
 	case endpoint == "/v1/responses" && p.Type == "responses":
 		return p.makePassthroughHandler(p.upstreamPath("/v1/responses")), nil
 	case endpoint == "/v1/chat/completions" && (p.Type == "responses" || p.Type == "chat"):
@@ -101,10 +136,16 @@ func (c *Config) Route(r *http.Request) (http.Handler, error) {
 		return p.makeMessagesToResponsesHandler(), nil
 	case endpoint == "/v1/responses" && p.Type == "messages" && p.ConvertToResponses:
 		return p.makeResponsesToAnthropicHandler(), nil
+	case endpoint == "/v1/responses" && p.Type == "claude-cli" && p.ConvertToResponses:
+		// A Responses client (Codex) reaches the CLI through the same reverse
+		// converter a type=messages provider uses.
+		return p.makeResponsesToAnthropicHandler(), nil
 	case endpoint == "/v1/messages" && p.Type == "chat" && p.ConvertToMessages:
 		return p.makeMessagesToChatHandler(), nil
 	}
 
+	recordRefusal(r.Context(), "endpoint_not_supported",
+		fmt.Sprintf("model %s does not support endpoint %s", model, endpoint))
 	return nil, fmt.Errorf("model %s does not support endpoint %s", model, endpoint)
 }
 
@@ -119,6 +160,19 @@ func (c *Config) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, endpoint, http.StatusBadRequest, err.Error())
 			return
 		}
+		// The model that actually goes upstream is not always the one the client
+		// asked for (aliases, stripped prefixes, display suffixes). Publishing it
+		// saves a log dig through the SSE body.
+		if resolved := requestlog.RecorderFromContext(r.Context()); resolved != nil {
+			resolved.Mutate(func(rec *requestlog.Record) {
+				if rec.ModelResolved != "" {
+					w.Header().Set("X-Upstream-Model", rec.ModelResolved)
+				}
+				if rec.Provider != "" {
+					w.Header().Set("X-Provider", rec.Provider)
+				}
+			})
+		}
 		handler.ServeHTTP(w, r)
 	default:
 		// Passthrough to copilot handler for /v1/embeddings etc.
@@ -130,7 +184,7 @@ func (c *Config) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (p *ProviderConfig) makePassthroughHandler(upstreamEndpoint string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := loggerFromContext(r.Context())
-		body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeError(w, r.URL.Path, http.StatusBadRequest, "failed to read request body")
 			return
@@ -153,7 +207,13 @@ func (p *ProviderConfig) makePassthroughHandler(upstreamEndpoint string) http.Ha
 		}
 		copyHeaders(proxyReq.Header, r.Header)
 		proxyReq.Header.Set("Content-Type", "application/json")
-		proxyReq.Header.Set("User-Agent", "aiproxy/1.0.0")
+		// Never overwrite the client's User-Agent: Claude Code sends
+		// "claude-cli/<version>" and that identity is what Anthropic expects.
+		// Fill in a neutral value only when the client sent none, so Go's
+		// default "Go-http-client/1.1" never reaches an upstream WAF.
+		if proxyReq.Header.Get("User-Agent") == "" {
+			proxyReq.Header.Set("User-Agent", defaultUserAgent)
+		}
 		if err := p.setAuthHeader(proxyReq); err != nil {
 			writeError(w, r.URL.Path, http.StatusBadGateway, err.Error())
 			return
@@ -248,13 +308,13 @@ func (p *ProviderConfig) makePassthroughHandler(upstreamEndpoint string) http.Ha
 }
 
 // makeCopilotResponsesToMessagesHandler converts OpenAI /v1/responses →
-// Anthropic /v1/messages via linguafranca, proxies through the copilot handler
+// Anthropic /v1/messages (native Go converters), proxies through the copilot handler
 // (which does native /messages passthrough for Claude), and converts the
 // response back to OpenAI Responses format.
 func (c *Config) makeCopilotResponsesToMessagesHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := loggerFromContext(r.Context())
-		body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeError(w, "/v1/responses", http.StatusBadRequest, "failed to read request body")
 			return
@@ -266,17 +326,15 @@ func (c *Config) makeCopilotResponsesToMessagesHandler() http.Handler {
 		}
 		json.Unmarshal(body, &reqMeta)
 
-		// 1. Responses → Anthropic Messages via linguafranca.
-		messagesBody, err := linguafrancaConvertRequest(body)
+		// 1. Responses → Anthropic Messages.
+		messagesBody, warns, err := anthropic.ConvertResponsesRequestToAnthropic(body)
 		if err != nil {
-			logger.Error("linguafranca request conversion failed", "error", err)
-			writeError(w, "/v1/responses", http.StatusBadGateway, "conversion failed")
+			logger.Warn("responses→messages conversion failed", "error", err)
+			writeError(w, "/v1/responses", http.StatusBadRequest, err.Error())
 			return
 		}
-		if len(messagesBody) > 10<<20 {
-			writeError(w, "/v1/responses", http.StatusRequestEntityTooLarge,
-				"request body too large after conversion")
-			return
+		for _, wmsg := range warns {
+			logger.Debug("responses→messages conversion", "note", wmsg)
 		}
 
 		// Copilot /v1/messages does not accept cache_control; strip it.
@@ -296,26 +354,8 @@ func (c *Config) makeCopilotResponsesToMessagesHandler() http.Handler {
 		copyHeaders(req.Header, r.Header)
 		req.Header.Set("Content-Type", "application/json")
 
-		if reqMeta.Stream {
-			// 3a. Streaming: io.Pipe instead of responseRecorder.
-			pr, pw := io.Pipe()
-			go func() {
-				defer pw.Close()
-				rec := &responseRecorder{header: make(http.Header)}
-				c.copilotHandler.ServeHTTP(rec, req)
-				if rec.statusCode != http.StatusOK && rec.statusCode != 0 {
-					pw.Write(rec.body)
-					return
-				}
-				pw.Write(rec.body)
-			}()
-			if err := linguafrancaConvertStream(w, pr); err != nil {
-				logger.Error("linguafranca stream conversion failed", "error", err)
-			}
-			return
-		}
-
-		// 3b. Non-streaming: responseRecorder.
+		// 3. The copilot handler writes into a recorder (it buffers the whole
+		// upstream answer), so errors can still be forwarded verbatim.
 		rec := &responseRecorder{header: make(http.Header)}
 		c.copilotHandler.ServeHTTP(rec, req)
 
@@ -324,10 +364,19 @@ func (c *Config) makeCopilotResponsesToMessagesHandler() http.Handler {
 			return
 		}
 
-		// 4. Anthropic Messages → Responses via linguafranca.
-		result, err := linguafrancaConvertResponse(rec.body)
+		if reqMeta.Stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			if err := writeAnthropicStreamAsResponses(w, bytes.NewReader(rec.body)); err != nil {
+				logger.Error("responses stream conversion failed", "error", err)
+			}
+			return
+		}
+
+		// 4. Anthropic Messages → Responses.
+		result, err := anthropic.ConvertAnthropicResponseToResponses(rec.body)
 		if err != nil {
-			logger.Error("linguafranca response conversion failed", "error", err)
+			logger.Error("messages→responses conversion failed", "error", err)
 			writeError(w, "/v1/responses", http.StatusBadGateway,
 				"response conversion failed")
 			return
@@ -349,12 +398,12 @@ func forwardCopilotError(w http.ResponseWriter, rec *responseRecorder) {
 	w.Write(rec.body)
 }
 
-// makeResponsesToAnthropicHandler converts Responses → Anthropic Messages via linguafranca,
+// makeResponsesToAnthropicHandler converts Responses → Anthropic Messages (native Go converters),
 // proxies to the upstream provider, and converts the response back.
 func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := loggerFromContext(r.Context())
-		body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeError(w, r.URL.Path, http.StatusBadRequest, "failed to read request body")
 			return
@@ -376,12 +425,15 @@ func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 			}
 		}
 
-		// Convert Responses → Anthropic Messages via linguafranca.
-		messagesBody, err := linguafrancaConvertRequest(body)
+		// Convert Responses → Anthropic Messages.
+		messagesBody, warns, err := anthropic.ConvertResponsesRequestToAnthropic(body)
 		if err != nil {
-			logger.Error("linguafranca request conversion failed", "error", err, "provider", p.ProviderID, "model", reqMeta.Model)
-			writeError(w, r.URL.Path, http.StatusBadGateway, "conversion failed")
+			logger.Warn("responses→messages conversion failed", "error", err, "provider", p.ProviderID, "model", reqMeta.Model)
+			writeError(w, r.URL.Path, http.StatusBadRequest, err.Error())
 			return
+		}
+		for _, wmsg := range warns {
+			logger.Debug("responses→messages conversion", "note", wmsg, "provider", p.ProviderID)
 		}
 
 		isStream := reqMeta.Stream
@@ -395,17 +447,28 @@ func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 		}
 		copyHeaders(upstreamReq.Header, r.Header)
 		upstreamReq.Header.Set("Content-Type", "application/json")
-		upstreamReq.Header.Set("User-Agent", "aiproxy/1.0.0")
+		if upstreamReq.Header.Get("User-Agent") == "" {
+			upstreamReq.Header.Set("User-Agent", defaultUserAgent)
+		}
 		if err := p.setAuthHeader(upstreamReq); err != nil {
 			writeError(w, r.URL.Path, http.StatusBadGateway, err.Error())
 			return
 		}
 
 		client := p.httpClient()
+		// A claude-cli provider has no HTTP upstream of its own: the generation
+		// must go through its own handler, or the request would reach Anthropic
+		// without the CLI and miss the subscription entirely.
+		dispatch := func() (*http.Response, error) {
+			if p.Type == "claude-cli" {
+				return p.openClaudeMessages(r.Context(), messagesBody)
+			}
+			return client.Do(upstreamReq)
+		}
 
 		if isStream {
 			upstreamReq.Header.Set("Accept", "text/event-stream")
-			resp, err := client.Do(upstreamReq)
+			resp, err := dispatch()
 			if err != nil {
 				logger.Error("upstream streaming failed", "error", err)
 				writeError(w, r.URL.Path, http.StatusBadGateway, "upstream unavailable")
@@ -424,14 +487,14 @@ func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 			if flusher, ok := w.(http.Flusher); ok {
 				flusher.Flush()
 			}
-			if err := linguafrancaConvertStream(w, resp.Body); err != nil {
-				logger.Error("stream conversion failed", "error", err)
+			if err := writeAnthropicStreamAsResponses(w, resp.Body); err != nil {
+				logger.Error("responses stream conversion failed", "error", err, "provider", p.ProviderID)
 			}
 			return
 		}
 
 		// Non-streaming.
-		resp, err := client.Do(upstreamReq)
+		resp, err := dispatch()
 		if err != nil {
 			logger.Error("upstream request failed", "error", err)
 			writeError(w, r.URL.Path, http.StatusBadGateway, "upstream unavailable")
@@ -453,9 +516,9 @@ func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 		}
 
 		// Convert Anthropic Messages → Responses.
-		result, err := linguafrancaConvertResponse(respBody)
+		result, err := anthropic.ConvertAnthropicResponseToResponses(respBody)
 		if err != nil {
-			logger.Error("linguafranca response conversion failed", "error", err, "provider", p.ProviderID)
+			logger.Error("messages→responses conversion failed", "error", err, "provider", p.ProviderID)
 			writeError(w, r.URL.Path, http.StatusBadGateway, "conversion failed")
 			return
 		}
@@ -467,12 +530,12 @@ func (p *ProviderConfig) makeResponsesToAnthropicHandler() http.Handler {
 }
 
 // makeMessagesToResponsesHandler converts Anthropic /v1/messages →
-// OpenAI /v1/responses via Go converters (no linguafranca), proxies to
+// OpenAI /v1/responses via Go converters, proxies to
 // the upstream provider, and converts the response back.
 func (p *ProviderConfig) makeMessagesToResponsesHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := loggerFromContext(r.Context())
-		body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeError(w, r.URL.Path, http.StatusBadRequest, "failed to read request body")
 			return
@@ -617,7 +680,7 @@ func (p *ProviderConfig) makeMessagesToResponsesHandler() http.Handler {
 func (p *ProviderConfig) makeMessagesToChatHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := loggerFromContext(r.Context())
-		body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeError(w, r.URL.Path, http.StatusBadRequest, "failed to read request body")
 			return
@@ -758,6 +821,32 @@ func (p *ProviderConfig) makeMessagesToChatHandler() http.Handler {
 	})
 }
 
+const (
+	anthropicOAuthBeta = "oauth-2025-04-20" // subscription OAuth capability; required by Anthropic for claude.ai tokens
+	// defaultUserAgent is only used when the client sent no User-Agent at all.
+	// Go's built-in "Go-http-client/1.1" is rejected by some upstream WAFs. The
+	// client's own UA must never be overwritten: for Claude Code that UA is
+	// "claude-cli/<version>", which is the identity Anthropic expects.
+	defaultUserAgent = "aiproxy/1.0.0"
+)
+
+// addBetaValue appends value to the anthropic-beta header without clobbering or
+// duplicating existing client-supplied capability values (the header is a
+// comma-separated open list; Claude Code adds new values between releases).
+func addBetaValue(h http.Header, value string) {
+	existing := h.Get("anthropic-beta")
+	if existing == "" {
+		h.Set("anthropic-beta", value)
+		return
+	}
+	for _, part := range strings.Split(existing, ",") {
+		if strings.TrimSpace(part) == value {
+			return
+		}
+	}
+	h.Set("anthropic-beta", existing+","+value)
+}
+
 func (p *ProviderConfig) setAuthHeader(req *http.Request) error {
 	// Anthropic requires the version header regardless of auth mode (K4).
 	if p.Type == "messages" {
@@ -769,6 +858,12 @@ func (p *ProviderConfig) setAuthHeader(req *http.Request) error {
 			return fmt.Errorf("failed to get access token for %s: %w", p.ProviderID, err)
 		}
 		req.Header.Set("Authorization", "Bearer "+tok)
+		if p.Type == "messages" {
+			// Subscription (claude.ai) OAuth tokens are rejected with 401 unless
+			// the request carries the OAuth capability in anthropic-beta. Merge
+			// rather than overwrite so the client's own betas survive untouched.
+			addBetaValue(req.Header, anthropicOAuthBeta)
+		}
 		return nil
 	}
 	switch p.Type {
@@ -791,12 +886,17 @@ func (p *ProviderConfig) httpClient() *http.Client {
 }
 
 // copyHeaders copies headers from src to dst, skipping hop-by-hop headers.
+// accept-encoding is dropped so Go's transport negotiates and decodes
+// compression itself: with the client's header forwarded verbatim the
+// transport skips decoding, and makePassthroughHandler's line-by-line SSE
+// rewrite corrupts the still-compressed bytes (zlib: invalid bit length).
 func copyHeaders(dst, src http.Header) {
 	for k, vv := range src {
 		kl := strings.ToLower(k)
 		if kl == "connection" || kl == "keep-alive" || kl == "proxy-connection" ||
 			kl == "transfer-encoding" || kl == "upgrade" || kl == "trailer" ||
-			kl == "x-api-key" || kl == "anthropic-version" {
+			kl == "x-api-key" || kl == "authorization" || kl == "anthropic-version" ||
+			kl == "accept-encoding" {
 			continue
 		}
 		for _, v := range vv {
@@ -809,7 +909,7 @@ func copyHeaders(dst, src http.Header) {
 // Downstream handlers (makePassthroughHandler, etc.) read it again.
 // This is safe but adds a JSON decode+encode round-trip per request.
 func readBodyAndModel(r *http.Request) ([]byte, string, error) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read request body: %w", err)
 	}

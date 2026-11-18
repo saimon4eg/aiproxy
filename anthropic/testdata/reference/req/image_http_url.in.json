@@ -1,0 +1,19 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "look",
+     "type": "input_text"
+    },
+    {
+     "image_url": "https://example.com/a.png",
+     "type": "input_image"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

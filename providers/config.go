@@ -20,24 +20,40 @@ type TokenProvider interface {
 
 // ProviderConfig describes a single provider from providers.json.
 type ProviderConfig struct {
-	ProviderID                 string            `json:"provider_id"`
-	Name                       string            `json:"name"`
-	Type                       string            `json:"type"` // "copilot", "messages", "responses", "chat"
-	SubType                    string            `json:"sub_type,omitempty"` // e.g. "deepseek" within "messages"
-	Auth                       string            `json:"auth"` // "oauth", "api_key"
-	Enabled                    bool              `json:"enabled"`
-	BaseURL                    string            `json:"base_url,omitempty"`
-	APIKey                     string            `json:"api_key,omitempty"`
-	ProxyHost                  string            `json:"proxy_host,omitempty"`
-	ModelPrefix                string            `json:"model_prefix"`
-	IntegrationID              string            `json:"integration_id,omitempty"`
-	APIVersion                 string            `json:"api_version,omitempty"`
+	ProviderID    string `json:"provider_id"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`               // "copilot", "messages", "responses", "chat"
+	SubType       string `json:"sub_type,omitempty"` // e.g. "deepseek" within "messages"
+	Auth          string `json:"auth"`               // "oauth", "api_key"
+	Enabled       bool   `json:"enabled"`
+	BaseURL       string `json:"base_url,omitempty"`
+	APIKey        string `json:"api_key,omitempty"`
+	ProxyHost     string `json:"proxy_host,omitempty"`
+	ModelPrefix   string `json:"model_prefix"`
+	IntegrationID string `json:"integration_id,omitempty"`
+	APIVersion    string `json:"api_version,omitempty"`
+	// ContextTier (copilot only): "" = auto (inject contextTier "long_context"
+	// for models whose catalog window is >= 500k), "off" = never, any other
+	// value = force it for every model on /responses and /chat/completions.
+	ContextTier string `json:"context_tier,omitempty"`
+	// ModelAliases (copilot only): client-visible model id -> Copilot model id
+	// (without the "copilot-" prefix). nil = built-in default
+	// (codex-auto-review -> gpt-5.6-luna); {} = no aliases.
+	ModelAliases       map[string]string `json:"model_aliases,omitempty"`
 	ConvertToResponses bool              `json:"convert_to_responses"`
 	ConvertToMessages  bool              `json:"convert_to_messages"`
-	AuthHeader         string            `json:"auth_header,omitempty"` // "x-api-key" (default) or "bearer"
-	APIPrefix          string            `json:"api_prefix,omitempty"` // API version prefix, default "/v1"
+	AuthHeader         string            `json:"auth_header,omitempty"`       // "x-api-key" (default) or "bearer"
+	APIPrefix          string            `json:"api_prefix,omitempty"`        // API version prefix, default "/v1"
 	DisableKeepAlive   bool              `json:"disable_keepalive,omitempty"` // disable HTTP keep-alive (workaround for upstream HTTP/2 stream-after-nonstream bug)
-	Models                     []json.RawMessage `json:"models,omitempty"`
+	// claude_cli only: absolute path to the official Claude Code binary.
+	// Default: CLAUDE_CLI_PATH, then "claude" on PATH, then the usual install dirs.
+	Command string `json:"command,omitempty"`
+	// claude_cli only: seconds of silence allowed before the turn is abandoned.
+	ReadIdleSeconds int `json:"read_idle_seconds,omitempty"`
+	// claude_cli only: directory holding the CLI's own login (CLAUDE_CONFIG_DIR).
+	// Default: <token dir>/claude.
+	ClaudeConfigDir string            `json:"claude_config_dir,omitempty"`
+	Models          []json.RawMessage `json:"models,omitempty"`
 
 	tokenProvider TokenProvider
 	transport     *http.Transport
@@ -78,18 +94,31 @@ func (p *ProviderConfig) TokenProvider() TokenProvider {
 
 // initHTTPClient creates the shared HTTP client for this provider.
 // MUST be called once at startup (see LoadConfig), before any handler goroutine.
-func (p *ProviderConfig) initHTTPClient() {
+func (p *ProviderConfig) initHTTPClient() error {
 	p.transport = &http.Transport{
 		ResponseHeaderTimeout: 5 * time.Minute,
 		DisableKeepAlives:     p.DisableKeepAlive,
 	}
 	if p.ProxyHost != "" {
-		// proxy_host is validated in Validate(); parse cannot fail here.
-		// A configured proxy is always applied — no silent direct fallback.
-		u, _ := upstream.ParseProxyURL(p.ProxyHost)
+		// A configured proxy is always applied — never a silent direct fallback.
+		// Validate() already parsed this at startup; a failure here is a bug, not a
+		// reason to quietly connect around the proxy.
+		u, err := upstream.ParseProxyURL(p.ProxyHost)
+		if err != nil {
+			return fmt.Errorf("provider %s: invalid proxy_host %q: %w", p.ProviderID, p.ProxyHost, err)
+		}
 		p.transport.Proxy = http.ProxyURL(u)
 	}
-	p.client = &http.Client{Transport: requestlog.WrapTransport(p.transport), Timeout: 5 * time.Minute}
+	p.client = &http.Client{
+		Transport: requestlog.WrapTransport(p.transport),
+		// No overall timeout: this is a proxy, and a long generation legitimately
+		// outlives any fixed budget (a full 1M-context turn can stream for tens of
+		// minutes). ResponseHeaderTimeout above still catches an upstream that
+		// never answers, and every handler carries the client's own context, so a
+		// disconnected client still cancels its upstream request.
+		Timeout: 0,
+	}
+	return nil
 }
 
 // Config is the root structure from providers.json.
@@ -98,6 +127,10 @@ type Config struct {
 	copilotHandler          http.Handler
 	copilotAnthropicHandler http.Handler
 	copilotModels           map[string]copilotEndpoints // key = model ID without "copilot-" prefix
+	// disabledPrefixes remembers model prefixes of providers turned off in
+	// providers.json, so a rejected model can be reported as "that provider is
+	// disabled" instead of the misleading "unknown model".
+	disabledPrefixes []string
 }
 
 // copilotEndpoints caches which endpoints a Copilot model supports natively.
@@ -136,6 +169,9 @@ func LoadConfig(path string, copilotHandler http.Handler) (*Config, error) {
 	for i := range raw.Providers {
 		p := &raw.Providers[i]
 		if !p.Enabled {
+			if p.ModelPrefix != "" {
+				cfg.disabledPrefixes = append(cfg.disabledPrefixes, p.ModelPrefix)
+			}
 			continue
 		}
 		if p.ProviderID == "" {
@@ -155,7 +191,9 @@ func LoadConfig(path string, copilotHandler http.Handler) (*Config, error) {
 	// One shared HTTP client per provider, created at startup (single-threaded here)
 	// to avoid a data race on lazy init from concurrent handler goroutines.
 	for i := range cfg.Providers {
-		cfg.Providers[i].initHTTPClient()
+		if err := cfg.Providers[i].initHTTPClient(); err != nil {
+			return nil, err
+		}
 	}
 
 	slog.Info("providers loaded", "count", len(cfg.Providers))
@@ -172,6 +210,13 @@ func (c *Config) InitOAuth(init OAuthInitFunc) {
 		// copilot uses its own auth stack (GitHub device flow via auth.Client);
 		// skip OAuth init to avoid false WARN.
 		if p.Type == "copilot" {
+			continue
+		}
+		// claude-cli owns its credential itself: the CLI logs in natively into
+		// its own config directory and refreshes there. aiproxy never holds,
+		// refreshes or forwards a subscription token, so there is nothing to
+		// initialise here.
+		if p.Type == "claude-cli" {
 			continue
 		}
 		tp, err := init(p.ProviderID, p.ProxyHost)
@@ -218,6 +263,12 @@ func (c *Config) Validate() error {
 			}
 		}
 
+		if p.Type != "copilot" && (p.ContextTier != "" || p.ModelAliases != nil) {
+			return fmt.Errorf("provider %s: context_tier and model_aliases are only supported for type=copilot", p.ProviderID)
+		}
+		if err := validateModelAliases(p.ProviderID, p.ModelAliases); err != nil {
+			return err
+		}
 		if strings.HasPrefix(p.ModelPrefix, "copilot-") {
 			return fmt.Errorf("provider %s: model_prefix %q starts with reserved prefix 'copilot-'", p.ProviderID, p.ModelPrefix)
 		}
@@ -247,8 +298,29 @@ func (c *Config) Validate() error {
 			if p.ConvertToResponses {
 				return fmt.Errorf("provider %s: convert_to_responses not supported for type=chat", p.ProviderID)
 			}
+		case "claude-cli":
+			// The transport speaks Anthropic natively, so a Responses client is
+			// served by the existing reverse converter, exactly as for a
+			// type=messages provider. The other direction has no meaning here.
+			if p.ConvertToMessages {
+				return fmt.Errorf("provider %s: convert_to_messages not supported for type=claude-cli", p.ProviderID)
+			}
+			if p.BaseURL == "" {
+				p.BaseURL = "https://api.anthropic.com"
+			}
+			if p.Auth == "oauth" && p.APIKey != "" {
+				return fmt.Errorf("provider %s: api_key and auth=oauth are mutually exclusive", p.ProviderID)
+			}
+			// The relay appends the CLI's own /v1/messages to base_url, so a
+			// non-standard api_prefix would silently produce a wrong upstream path.
+			if p.APIPrefix != "" && p.APIPrefix != "/v1" {
+				return fmt.Errorf("provider %s: api_prefix is not supported for type=claude-cli (the CLI always calls /v1/messages)", p.ProviderID)
+			}
+			if p.ModelPrefix == "" {
+				return fmt.Errorf("provider %s: model_prefix is required for type=claude-cli", p.ProviderID)
+			}
 		default:
-			return fmt.Errorf("provider %s: unknown type %q (must be copilot, messages, responses, or chat)", p.ProviderID, p.Type)
+			return fmt.Errorf("provider %s: unknown type %q (must be copilot, messages, responses, chat, or claude-cli)", p.ProviderID, p.Type)
 		}
 	}
 

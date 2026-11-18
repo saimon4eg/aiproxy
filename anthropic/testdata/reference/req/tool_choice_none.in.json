@@ -1,0 +1,35 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "hi",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "tool_choice": "none",
+ "tools": [
+  {
+   "description": "Get weather",
+   "name": "get_weather",
+   "parameters": {
+    "properties": {
+     "city": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "city"
+    ],
+    "type": "object"
+   },
+   "strict": false,
+   "type": "function"
+  }
+ ]
+}

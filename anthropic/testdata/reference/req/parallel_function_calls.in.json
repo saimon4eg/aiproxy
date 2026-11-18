@@ -1,0 +1,73 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "both",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "arguments": "{\"city\":\"A\"}",
+   "call_id": "c1",
+   "name": "get_weather",
+   "type": "function_call"
+  },
+  {
+   "arguments": "{\"city\":\"A\"}",
+   "call_id": "c2",
+   "name": "get_time",
+   "type": "function_call"
+  },
+  {
+   "call_id": "c1",
+   "output": "sunny",
+   "type": "function_call_output"
+  },
+  {
+   "call_id": "c2",
+   "output": "noon",
+   "type": "function_call_output"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "tools": [
+  {
+   "description": "Get weather",
+   "name": "get_weather",
+   "parameters": {
+    "properties": {
+     "city": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "city"
+    ],
+    "type": "object"
+   },
+   "strict": false,
+   "type": "function"
+  },
+  {
+   "description": "Get time",
+   "name": "get_time",
+   "parameters": {
+    "properties": {
+     "city": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "city"
+    ],
+    "type": "object"
+   },
+   "strict": false,
+   "type": "function"
+  }
+ ]
+}

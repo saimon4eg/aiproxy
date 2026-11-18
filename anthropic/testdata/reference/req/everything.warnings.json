@@ -1,0 +1,12 @@
+[
+ {
+  "action": "dropped",
+  "field": "parallel_tool_calls",
+  "message": "not supported in Anthropic"
+ },
+ {
+  "action": "dropped",
+  "field": "instructions",
+  "message": "not supported in Anthropic"
+ }
+]

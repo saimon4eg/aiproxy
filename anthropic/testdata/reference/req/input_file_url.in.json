@@ -1,0 +1,19 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "f",
+     "type": "input_text"
+    },
+    {
+     "file_url": "https://e.com/a.pdf",
+     "type": "input_file"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

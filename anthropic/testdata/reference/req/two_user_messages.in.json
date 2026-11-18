@@ -1,0 +1,25 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "one",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "two",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

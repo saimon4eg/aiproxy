@@ -1,0 +1,19 @@
+{
+ "input": [
+  {
+   "id": "x",
+   "type": "item_reference"
+  },
+  {
+   "content": [
+    {
+     "text": "n",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

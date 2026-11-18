@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "text.verbosity",
+  "message": "not supported in Anthropic"
+ }
+]

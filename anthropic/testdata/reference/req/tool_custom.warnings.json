@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "custom_tool",
+  "message": "custom tools are not supported in Anthropic"
+ }
+]

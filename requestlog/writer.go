@@ -1,31 +1,46 @@
 package requestlog
 
 import (
-	"bytes"
-	"fmt"
 	"net/http"
+	"strings"
+	"time"
 )
 
-// maxRespLog is the maximum body size captured for the proxy→user log entry.
-const maxRespLog = 8 << 10 // 8KB
-
-// LoggedResponseWriter wraps an http.ResponseWriter, capturing the status code
-// and first maxRespLog bytes of the body for logging in Close().
-// Implements http.Flusher so SSE streaming works transparently.
-type LoggedResponseWriter struct {
-	http.ResponseWriter
-	reqID       string
-	buf         bytes.Buffer
-	status      int
-	wroteHeader bool
+// streamTailNote reports whether the body being logged is an SSE stream. Its tail is
+// the last event captured, not the end of a document, so it earns a second note on
+// top of the elision marker.
+func streamTailNote(h http.Header) bool {
+	return strings.HasPrefix(h.Get("Content-Type"), "text/event-stream")
 }
 
-// NewLoggedResponseWriter creates a wrapper that logs proxy→user on Close().
-func NewLoggedResponseWriter(w http.ResponseWriter, reqID string) *LoggedResponseWriter {
+// LoggedResponseWriter wraps an http.ResponseWriter, capturing the status code,
+// the time to first byte, the byte count and up to BodyLimit() bytes from the head
+// and the tail of the body for the body log.
+//
+// It implements http.Flusher so SSE streaming works transparently.
+type LoggedResponseWriter struct {
+	http.ResponseWriter
+	reqID string
+	rec   *Recorder
+	start time.Time
+
+	buf         *bodyCapture
+	status      int
+	wroteHeader bool
+	firstByte   time.Time
+	bytesOut    int64
+}
+
+// NewLoggedResponseWriter creates a wrapper that records the client-visible
+// result for the summary and, when body logging is on, the proxy→user entry.
+func NewLoggedResponseWriter(w http.ResponseWriter, reqID string, rec *Recorder, start time.Time) *LoggedResponseWriter {
 	return &LoggedResponseWriter{
 		ResponseWriter: w,
 		reqID:          reqID,
+		rec:            rec,
+		start:          start,
 		status:         http.StatusOK,
+		buf:            newBodyCapture(BodyLimit()),
 	}
 }
 
@@ -33,24 +48,31 @@ func NewLoggedResponseWriter(w http.ResponseWriter, reqID string) *LoggedRespons
 func (w *LoggedResponseWriter) WriteHeader(code int) {
 	w.status = code
 	w.wroteHeader = true
+	// Recorded immediately, not in Close: anything that reports on the request
+	// before the outermost middleware returns (the latency log line, an error
+	// handler) needs to see the real status.
+	if w.rec != nil {
+		w.rec.Mutate(func(r *Record) {
+			// The client-visible status wins: it is what "how many 403s" means.
+			r.Status = code
+		})
+	}
 	w.ResponseWriter.WriteHeader(code)
 }
 
-// Write buffers the first maxRespLog bytes, then forwards to the underlying writer.
+// Write buffers the head and tail of the body, then forwards to the underlying
+// writer. The middle is counted, not kept.
 func (w *LoggedResponseWriter) Write(b []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
-	// Buffer up to maxRespLog bytes.
-	if w.buf.Len() < maxRespLog {
-		remaining := maxRespLog - w.buf.Len()
-		if len(b) <= remaining {
-			w.buf.Write(b)
-		} else {
-			w.buf.Write(b[:remaining])
-		}
+	if w.firstByte.IsZero() {
+		w.firstByte = time.Now()
 	}
-	return w.ResponseWriter.Write(b)
+	w.buf.Write(b)
+	n, err := w.ResponseWriter.Write(b)
+	w.bytesOut += int64(n)
+	return n, err
 }
 
 // Flush delegates to the underlying writer if it supports Flusher (SSE).
@@ -65,25 +87,42 @@ func (w *LoggedResponseWriter) Status() int {
 	return w.status
 }
 
-// Close writes the proxy→user log entry and closes the log file for this request.
-// Must be called after the handler has finished writing the response.
+// Close records the client-visible outcome and, when body logging is on, writes
+// the proxy→user entry and closes the request's file.
 func (w *LoggedResponseWriter) Close() {
-	logger := Get()
-	if logger == nil || w.reqID == "" {
-		return
+	if w.rec != nil {
+		status, bytesOut := w.status, w.bytesOut
+		var ttfb int64
+		if !w.firstByte.IsZero() {
+			ttfb = w.firstByte.Sub(w.start).Milliseconds()
+		}
+		w.rec.Mutate(func(r *Record) {
+			if r.Status == 0 {
+				r.Status = status
+			}
+			r.BytesOut = bytesOut
+			if ttfb > 0 {
+				r.TTFBMS = ttfb
+			}
+		})
 	}
 
+	logger := Get()
+	if logger == nil || !logger.BodiesEnabled() || w.reqID == "" {
+		return
+	}
 	entry := logger.GetEntry(w.reqID)
 	if entry == nil {
 		return
 	}
 
-	// Collect response headers (readable from ResponseWriter at any point).
 	respHdrs := headerMap(w.ResponseWriter.Header())
-
+	// The capture already elided the middle of a long body; a stream gets one extra
+	// note because its tail is not the end of the conversation, only the end of what
+	// was captured.
 	body := w.buf.String()
-	if w.buf.Len() >= maxRespLog {
-		body += fmt.Sprintf("\n[... truncated at %d bytes ...]", maxRespLog)
+	if streamTailNote(w.ResponseWriter.Header()) && w.buf.Total() > int64(len(body)) {
+		body += "\n[... stream continues ...]"
 	}
 
 	entry.Log(map[string]interface{}{
@@ -93,6 +132,5 @@ func (w *LoggedResponseWriter) Close() {
 		"body":    body,
 	})
 
-	// Log is complete — close and clean up.
 	logger.CloseEntry(w.reqID)
 }

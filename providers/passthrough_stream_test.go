@@ -46,7 +46,9 @@ func TestPassthroughForwardsCompleteMessageStopEvent(t *testing.T) {
 		APIKey:     "test-key",
 		AuthHeader: "bearer",
 	}
-	p.initHTTPClient()
+	if err := p.initHTTPClient(); err != nil {
+		t.Fatal(err)
+	}
 	handler := p.makePassthroughHandler("/v1/messages")
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"stream":true,"messages":[]}`))

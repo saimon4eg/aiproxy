@@ -1,0 +1,17 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "hi",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "previous_response_id": "resp_1",
+ "store": true
+}

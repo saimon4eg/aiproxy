@@ -25,9 +25,10 @@ type Handler struct {
 
 // NewHandler creates a new Anthropic handler.
 // The transport is used for upstream HTTP requests (pass nil to create a new one).
-func NewHandler(authClient upstream.TokenProvider, transport http.RoundTripper, mc *models.Cache, debug bool) *Handler {
+// The upstream client is shared with the other Copilot handlers.
+func NewHandler(uc *upstream.Client, mc *models.Cache) *Handler {
 	return &Handler{
-		upstream: upstream.NewClient(authClient, transport, debug),
+		upstream: uc,
 		models:   mc,
 	}
 }
@@ -41,7 +42,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, upstream.MaxRequestBody) // 10MB limit
 	reqBody, err := io.ReadAll(r.Body)
 	if err != nil {
 		WriteAnthropicError(w, http.StatusBadRequest, AnthropicErrorTypeInvalidRequest, fmt.Sprintf("Invalid request body: %v", err))

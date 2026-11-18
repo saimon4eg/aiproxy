@@ -1,0 +1,27 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "hi",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "tools": [
+  {
+   "function": {
+    "description": "d",
+    "name": "nf",
+    "parameters": {
+     "type": "object"
+    }
+   },
+   "type": "function"
+  }
+ ]
+}

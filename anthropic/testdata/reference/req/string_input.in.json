@@ -1,0 +1,4 @@
+{
+ "input": "hello as plain string",
+ "model": "deepseek-v4-pro"
+}

@@ -1,0 +1,92 @@
+[
+ {
+  "response": {
+   "created_at": 0,
+   "error": null,
+   "id": "msg_s",
+   "incomplete_details": null,
+   "instructions": null,
+   "metadata": null,
+   "model": "deepseek-v4-pro",
+   "object": "response",
+   "output": [],
+   "previous_response_id": null,
+   "status": "in_progress",
+   "temperature": null,
+   "top_p": null,
+   "usage": {
+    "input_tokens": 7,
+    "input_tokens_details": {
+     "cached_tokens": 0
+    },
+    "output_tokens": 1,
+    "output_tokens_details": {
+     "reasoning_tokens": 0
+    },
+    "total_tokens": 8
+   }
+  },
+  "sequence_number": 0,
+  "type": "response.created"
+ },
+ {
+  "response": {
+   "created_at": 0,
+   "error": null,
+   "id": "msg_s",
+   "incomplete_details": null,
+   "instructions": null,
+   "metadata": null,
+   "model": "deepseek-v4-pro",
+   "object": "response",
+   "output": [],
+   "previous_response_id": null,
+   "status": "in_progress",
+   "temperature": null,
+   "top_p": null,
+   "usage": {
+    "input_tokens": 7,
+    "input_tokens_details": {
+     "cached_tokens": 0
+    },
+    "output_tokens": 1,
+    "output_tokens_details": {
+     "reasoning_tokens": 0
+    },
+    "total_tokens": 8
+   }
+  },
+  "sequence_number": 1,
+  "type": "response.in_progress"
+ },
+ {
+  "response": {
+   "created_at": 0,
+   "error": null,
+   "id": "msg_s",
+   "incomplete_details": null,
+   "instructions": null,
+   "metadata": null,
+   "model": "deepseek-v4-pro",
+   "object": "response",
+   "output": [],
+   "previous_response_id": null,
+   "status": "completed",
+   "temperature": null,
+   "top_p": null,
+   "usage": {
+    "input_tokens": 7,
+    "input_tokens_details": {
+     "cached_tokens": 0
+    },
+    "output_tokens": 9,
+    "output_tokens_details": {
+     "reasoning_tokens": 0
+    },
+    "total_tokens": 16
+   }
+  },
+  "sequence_number": 2,
+  "type": "response.completed"
+ }
+]

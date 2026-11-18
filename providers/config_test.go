@@ -114,3 +114,38 @@ func TestLoadConfig_Valid(t *testing.T) {
 		t.Errorf("expected client to be initialized by LoadConfig (K3 fix)")
 	}
 }
+
+// claude-cli owns its own upstream path: the relay appends /v1/messages to
+// base_url, so a non-standard api_prefix would produce a wrong URL. Refusing at
+// startup is the only way that stays visible.
+func TestValidate_ClaudeCLIRejectsAPIPrefix(t *testing.T) {
+	cfg := &Config{Providers: []ProviderConfig{{
+		ProviderID: "claude", Type: "claude-cli", Auth: "oauth",
+		ModelPrefix: "claude", APIPrefix: "/v4",
+	}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected api_prefix to be refused for claude-cli")
+	}
+}
+
+// Without a model_prefix a claude-cli provider cannot be routed to at all.
+func TestValidate_ClaudeCLIRequiresModelPrefix(t *testing.T) {
+	cfg := &Config{Providers: []ProviderConfig{{
+		ProviderID: "claude", Type: "claude-cli", Auth: "oauth",
+	}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected a missing model_prefix to be refused")
+	}
+}
+
+// The default api_prefix (/v1) stays valid, otherwise the shipped config would
+// stop loading.
+func TestValidate_ClaudeCLIDefaultAPIPrefixIsAccepted(t *testing.T) {
+	cfg := &Config{Providers: []ProviderConfig{{
+		ProviderID: "claude", Type: "claude-cli", Auth: "oauth",
+		ModelPrefix: "claude", APIPrefix: "/v1", BaseURL: "https://api.anthropic.com",
+	}}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("a claude-cli provider with /v1 must validate: %v", err)
+	}
+}

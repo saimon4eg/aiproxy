@@ -1,0 +1,41 @@
+{
+ "cache_control": {
+  "type": "ephemeral"
+ },
+ "max_tokens": 32000,
+ "messages": [
+  {
+   "content": [
+    {
+     "text": "q",
+     "type": "text"
+    }
+   ],
+   "role": "user"
+  },
+  {
+   "content": [
+    {
+     "signature": "SIG",
+     "thinking": "thinking",
+     "type": "thinking"
+    },
+    {
+     "text": "a",
+     "type": "text"
+    }
+   ],
+   "role": "assistant"
+  },
+  {
+   "content": [
+    {
+     "text": "next",
+     "type": "text"
+    }
+   ],
+   "role": "user"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

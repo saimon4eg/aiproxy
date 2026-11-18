@@ -23,11 +23,11 @@ type Handler struct {
 	modelsCache *models.Cache
 }
 
-// NewHandler creates a new proxy handler.
-// The transport is used for upstream HTTP requests (pass nil to create a new one).
-func NewHandler(authClient *auth.Client, transport http.RoundTripper, mc *models.Cache, debug bool) *Handler {
+// NewHandler creates a new proxy handler. The upstream client is shared by all
+// Copilot handlers so that per-client settings (contextTier) apply everywhere.
+func NewHandler(uc *upstream.Client, authClient *auth.Client, mc *models.Cache) *Handler {
 	return &Handler{
-		upstream:    upstream.NewClient(authClient, transport, debug),
+		upstream:    uc,
 		authClient:  authClient,
 		modelsCache: mc,
 	}
@@ -84,17 +84,12 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 
 // handlePassthrough handles direct passthrough requests
 func (h *Handler) handlePassthrough(w http.ResponseWriter, r *http.Request, endpoint string) {
-	// Check body size before processing — reject oversized payloads with 413
 	var bodyBytes []byte
 	if r.Body != nil {
 		var err error
-		bodyBytes, err = io.ReadAll(io.LimitReader(r.Body, upstream.MaxRequestBody+1))
+		bodyBytes, err = io.ReadAll(r.Body)
 		if err != nil {
 			WriteOpenAIError(w, http.StatusBadRequest, OpenAIErrorTypeInvalidRequest, "Failed to read request body")
-			return
-		}
-		if len(bodyBytes) > upstream.MaxRequestBody {
-			WriteOpenAIError(w, http.StatusRequestEntityTooLarge, OpenAIErrorTypeInvalidRequest, "Request body too large")
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -391,7 +386,6 @@ func (h *Handler) HandleUsage(w http.ResponseWriter, r *http.Request) {
 
 // handleEmbeddings normalizes input to array format before proxying
 func (h *Handler) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, upstream.MaxRequestBody) // 10MB limit
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		WriteOpenAIError(w, http.StatusBadRequest, OpenAIErrorTypeInvalidRequest, "Failed to read request body")

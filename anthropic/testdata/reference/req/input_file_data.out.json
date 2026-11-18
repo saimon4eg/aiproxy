@@ -1,0 +1,27 @@
+{
+ "cache_control": {
+  "type": "ephemeral"
+ },
+ "max_tokens": 32000,
+ "messages": [
+  {
+   "content": [
+    {
+     "text": "f",
+     "type": "text"
+    },
+    {
+     "source": {
+      "data": "data:application/pdf;base64,AAAA",
+      "media_type": "application/pdf",
+      "type": "base64"
+     },
+     "title": "a.pdf",
+     "type": "document"
+    }
+   ],
+   "role": "user"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

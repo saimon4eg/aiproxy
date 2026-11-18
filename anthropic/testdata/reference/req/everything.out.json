@@ -1,0 +1,93 @@
+{
+ "cache_control": {
+  "type": "ephemeral"
+ },
+ "max_tokens": 100,
+ "messages": [
+  {
+   "content": [
+    {
+     "text": "w",
+     "type": "text"
+    }
+   ],
+   "role": "user"
+  },
+  {
+   "content": [
+    {
+     "signature": "S",
+     "thinking": "t",
+     "type": "thinking"
+    },
+    {
+     "id": "c1",
+     "input": {},
+     "name": "get_weather",
+     "type": "tool_use"
+    }
+   ],
+   "role": "assistant"
+  },
+  {
+   "content": [
+    {
+     "content": "ok",
+     "tool_use_id": "c1",
+     "type": "tool_result"
+    }
+   ],
+   "role": "user"
+  },
+  {
+   "content": [
+    {
+     "text": "done",
+     "type": "text"
+    }
+   ],
+   "role": "assistant"
+  },
+  {
+   "content": [
+    {
+     "text": "more",
+     "type": "text"
+    }
+   ],
+   "role": "user"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "output_config": {
+  "effort": "high"
+ },
+ "stream": true,
+ "temperature": 0.2,
+ "thinking": {
+  "display": "summarized",
+  "type": "adaptive"
+ },
+ "tool_choice": {
+  "type": "auto"
+ },
+ "tools": [
+  {
+   "description": "Get weather",
+   "input_schema": {
+    "properties": {
+     "city": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "city"
+    ],
+    "type": "object"
+   },
+   "name": "get_weather",
+   "strict": false
+  }
+ ],
+ "top_p": 0.8
+}

@@ -1,0 +1,7 @@
+[
+ {
+  "action": "changed",
+  "field": "service_tier",
+  "message": "service_tier=flex is not available in Anthropic and was mapped to standard"
+ }
+]

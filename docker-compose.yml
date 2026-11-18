@@ -12,6 +12,35 @@ services:
     environment:
       COPILOT2API_DEBUG: "${COPILOT2API_DEBUG:-true}"
       COPILOT2API_TOKEN_DIR: "/home/aiproxy/.config/copilot2api"
+      # ── Request log ──
+      # Summaries (one line per request, indexed in logs/index.sqlite) are always
+      # written. Bodies — the four per-request files with 8 KB of payload each —
+      # stay tied to --debug and are what makes the volume big.
+      AIPROXY_LOG_DIR: "/app/logs"
+      AIPROXY_LOG_BODIES: "${AIPROXY_LOG_BODIES:-true}"
+      # One body line is capped at 32 KB and keeps its head and tail: the middle is
+      # replaced by a marker naming how much was dropped, so a log line stays
+      # readable and parseable without carrying a whole conversation.
+      AIPROXY_LOG_BODY_LIMIT: "${AIPROXY_LOG_BODY_LIMIT:-32768}"
+      # Bodies stop for the rest of the day once the day directory reaches this.
+      AIPROXY_LOG_BODY_BUDGET_MB: "${AIPROXY_LOG_BODY_BUDGET_MB:-512}"
+      # Probes (GET /v1/models, /props, /api/tags, ...) are excluded by default:
+      # on a measured day they were 16% of requests and 13% of all log records,
+      # all phantom errors.
+      AIPROXY_LOG_PROBES: "${AIPROXY_LOG_PROBES:-false}"
+      # ── Retention ──
+      # Age: day directories past this window are compressed, then dropped at twice
+      # it. 14 days is the two weeks asked for.
+      AIPROXY_LOG_RETENTION_DAYS: "${AIPROXY_LOG_RETENTION_DAYS:-14}"
+      # Size: hard ceiling for the whole log tree. When it is exceeded the oldest
+      # day directories and summary files are deleted until the tree fits — age
+      # alone cannot bound a day that produces ten times the usual volume.
+      AIPROXY_LOG_MAX_SIZE: "${AIPROXY_LOG_MAX_SIZE:-20G}"
+      # The cleanup pass runs in-process, at startup and then on this interval.
+      # No cron in the image: nothing to install, nothing to supervise, and a
+      # container restart does not lose the schedule.
+      AIPROXY_LOG_RETENTION_INTERVAL: "${AIPROXY_LOG_RETENTION_INTERVAL:-24h}"
+      AIPROXY_LOG_INDEX: "${AIPROXY_LOG_INDEX:-true}"
     command: ["--debug"]
     extra_hosts:
       - "host.docker.internal:host-gateway"

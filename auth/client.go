@@ -3,9 +3,9 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -94,6 +94,21 @@ func (c *Client) GetToken(ctx context.Context) (string, error) {
 	return tok.Token, nil
 }
 
+// GetGitHubToken returns the stored long-lived GitHub OAuth token. It is used
+// only for Copilot model-catalog compatibility fallback requests.
+func (c *Client) GetGitHubToken(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.creds.GitHubToken == "" {
+		return "", fmt.Errorf("no GitHub token available")
+	}
+	return c.creds.GitHubToken, nil
+}
+
 // GetBaseURL returns the base URL for API calls
 func (c *Client) GetBaseURL() string {
 	c.mu.RLock()
@@ -103,7 +118,6 @@ func (c *Client) GetBaseURL() string {
 	}
 	return DefaultBaseURL
 }
-
 
 // EnsureAuthenticated runs the interactive device flow if needed and verifies
 // that a valid Copilot token can be obtained. Call this at startup only.
@@ -195,6 +209,7 @@ func (c *Client) refreshCopilotToken() error {
 	slog.Info("copilot token refreshed", "expires_at", copilotToken.ExpiresAt, "base_url", copilotToken.BaseURL, "duration_ms", time.Since(start).Milliseconds())
 	return nil
 }
+
 // UsageInfo contains Copilot usage and quota information
 type UsageInfo struct {
 	SKU                  string      `json:"sku"`
@@ -204,8 +219,6 @@ type UsageInfo struct {
 	EnterpriseList       []int       `json:"enterprise_list,omitempty"`
 	OrganizationList     []string    `json:"organization_list,omitempty"`
 }
-
-
 
 // GetUsageInfo fetches usage info from the Copilot token endpoint
 func (c *Client) GetUsageInfo(ctx context.Context) (*UsageInfo, error) {

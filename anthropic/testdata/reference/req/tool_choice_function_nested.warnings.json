@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "tool_choice",
+  "message": "specific function tool choice is missing name; tool_choice dropped"
+ }
+]

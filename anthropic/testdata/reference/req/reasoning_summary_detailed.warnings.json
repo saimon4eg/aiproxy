@@ -1,0 +1,7 @@
+[
+ {
+  "action": "changed",
+  "field": "reasoning.summary",
+  "message": "Anthropic only supports summarized/omitted thinking display; mapped to summarized"
+ }
+]

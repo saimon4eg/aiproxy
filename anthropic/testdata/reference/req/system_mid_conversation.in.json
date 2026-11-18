@@ -1,0 +1,45 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "a",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "b",
+     "type": "output_text"
+    }
+   ],
+   "role": "assistant",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "late",
+     "type": "input_text"
+    }
+   ],
+   "role": "system",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "c",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

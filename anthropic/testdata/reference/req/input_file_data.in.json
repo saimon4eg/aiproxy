@@ -1,0 +1,20 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "f",
+     "type": "input_text"
+    },
+    {
+     "file_data": "data:application/pdf;base64,AAAA",
+     "filename": "a.pdf",
+     "type": "input_file"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

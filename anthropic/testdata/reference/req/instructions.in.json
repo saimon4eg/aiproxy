@@ -1,0 +1,16 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "hi",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "instructions": "You are terse.",
+ "model": "deepseek-v4-pro"
+}

@@ -1,0 +1,54 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "w",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "arguments": "{}",
+   "call_id": "c1",
+   "name": "get_weather",
+   "type": "function_call"
+  },
+  {
+   "call_id": "c1",
+   "output": [
+    {
+     "text": "part1",
+     "type": "input_text"
+    },
+    {
+     "text": "part2",
+     "type": "input_text"
+    }
+   ],
+   "type": "function_call_output"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "tools": [
+  {
+   "description": "Get weather",
+   "name": "get_weather",
+   "parameters": {
+    "properties": {
+     "city": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "city"
+    ],
+    "type": "object"
+   },
+   "strict": false,
+   "type": "function"
+  }
+ ]
+}

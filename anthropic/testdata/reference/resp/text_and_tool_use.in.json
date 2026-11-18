@@ -1,0 +1,26 @@
+{
+ "content": [
+  {
+   "text": "hello",
+   "type": "text"
+  },
+  {
+   "id": "toolu_1",
+   "input": {
+    "city": "Paris"
+   },
+   "name": "get_weather",
+   "type": "tool_use"
+  }
+ ],
+ "id": "msg_1",
+ "model": "deepseek-v4-pro",
+ "role": "assistant",
+ "stop_reason": "tool_use",
+ "stop_sequence": null,
+ "type": "message",
+ "usage": {
+  "input_tokens": 10,
+  "output_tokens": 5
+ }
+}

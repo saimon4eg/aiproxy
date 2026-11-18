@@ -62,6 +62,20 @@ func AddHeaders(req *http.Request, token string) {
 	}
 }
 
+// AddModelAccessHeaders adds the headers used by Copilot's model catalog
+// endpoint. The catalog is a metadata request, not a conversation request.
+// A non-empty integrationID overrides the configured Copilot-Integration-Id
+// (used by the developer-CLI fallback).
+func AddModelAccessHeaders(req *http.Request, token string, integrationID string) {
+	AddHeaders(req, token)
+	req.Header.Set("Openai-Intent", "model-access")
+	req.Header.Set("X-Interaction-Type", "model-access")
+	req.Header.Del("Content-Type")
+	if integrationID != "" {
+		req.Header.Set("Copilot-Integration-Id", integrationID)
+	}
+}
+
 // GenerateRequestID generates a unique request ID using crypto/rand
 func GenerateRequestID() string {
 	b := make([]byte, 16)

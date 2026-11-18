@@ -1,0 +1,37 @@
+{
+ "cache_control": {
+  "type": "ephemeral"
+ },
+ "max_tokens": 32000,
+ "messages": [
+  {
+   "content": [
+    {
+     "text": "a",
+     "type": "text"
+    }
+   ],
+   "role": "user"
+  },
+  {
+   "content": [
+    {
+     "text": "b",
+     "type": "text"
+    }
+   ],
+   "role": "assistant"
+  },
+  {
+   "content": [
+    {
+     "text": "c",
+     "type": "text"
+    }
+   ],
+   "role": "user"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "system": "late"
+}

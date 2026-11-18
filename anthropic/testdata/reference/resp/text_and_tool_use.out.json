@@ -1,0 +1,49 @@
+{
+ "created_at": 0,
+ "error": null,
+ "id": "msg_1",
+ "incomplete_details": null,
+ "instructions": null,
+ "metadata": null,
+ "model": "deepseek-v4-pro",
+ "object": "response",
+ "output": [
+  {
+   "content": [
+    {
+     "annotations": [],
+     "logprobs": [],
+     "text": "hello",
+     "type": "output_text"
+    }
+   ],
+   "id": "msg_dcbff6f423b41b33e855b372e9dcae32f402c1514287689610",
+   "role": "assistant",
+   "status": "completed",
+   "type": "message"
+  },
+  {
+   "arguments": "{\"city\":\"Paris\"}",
+   "call_id": "toolu_1",
+   "id": "fc_54d38cfa0cbd62366989fc15f475a79abd15d52bfdd3367da1",
+   "name": "get_weather",
+   "status": "completed",
+   "type": "function_call"
+  }
+ ],
+ "previous_response_id": null,
+ "status": "completed",
+ "temperature": null,
+ "top_p": null,
+ "usage": {
+  "input_tokens": 10,
+  "input_tokens_details": {
+   "cached_tokens": 0
+  },
+  "output_tokens": 5,
+  "output_tokens_details": {
+   "reasoning_tokens": 0
+  },
+  "total_tokens": 15
+ }
+}

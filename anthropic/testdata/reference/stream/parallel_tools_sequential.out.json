@@ -1,0 +1,189 @@
+[
+ {
+  "response": {
+   "created_at": 0,
+   "error": null,
+   "id": "msg_s",
+   "incomplete_details": null,
+   "instructions": null,
+   "metadata": null,
+   "model": "deepseek-v4-pro",
+   "object": "response",
+   "output": [],
+   "previous_response_id": null,
+   "status": "in_progress",
+   "temperature": null,
+   "top_p": null,
+   "usage": {
+    "input_tokens": 7,
+    "input_tokens_details": {
+     "cached_tokens": 0
+    },
+    "output_tokens": 1,
+    "output_tokens_details": {
+     "reasoning_tokens": 0
+    },
+    "total_tokens": 8
+   }
+  },
+  "sequence_number": 0,
+  "type": "response.created"
+ },
+ {
+  "response": {
+   "created_at": 0,
+   "error": null,
+   "id": "msg_s",
+   "incomplete_details": null,
+   "instructions": null,
+   "metadata": null,
+   "model": "deepseek-v4-pro",
+   "object": "response",
+   "output": [],
+   "previous_response_id": null,
+   "status": "in_progress",
+   "temperature": null,
+   "top_p": null,
+   "usage": {
+    "input_tokens": 7,
+    "input_tokens_details": {
+     "cached_tokens": 0
+    },
+    "output_tokens": 1,
+    "output_tokens_details": {
+     "reasoning_tokens": 0
+    },
+    "total_tokens": 8
+   }
+  },
+  "sequence_number": 1,
+  "type": "response.in_progress"
+ },
+ {
+  "item": {
+   "arguments": "",
+   "call_id": "t1",
+   "id": "fc_f372fa8a41c82e6d1767f707f77a021dea82b3c5a61409508a",
+   "name": "get_weather",
+   "status": "in_progress",
+   "type": "function_call"
+  },
+  "output_index": 0,
+  "sequence_number": 2,
+  "type": "response.output_item.added"
+ },
+ {
+  "delta": "{\"a\":1}",
+  "item_id": "fc_f372fa8a41c82e6d1767f707f77a021dea82b3c5a61409508a",
+  "output_index": 0,
+  "sequence_number": 3,
+  "type": "response.function_call_arguments.delta"
+ },
+ {
+  "arguments": "{\"a\":1}",
+  "item_id": "fc_f372fa8a41c82e6d1767f707f77a021dea82b3c5a61409508a",
+  "output_index": 0,
+  "sequence_number": 4,
+  "type": "response.function_call_arguments.done"
+ },
+ {
+  "item": {
+   "arguments": "{\"a\":1}",
+   "call_id": "t1",
+   "id": "fc_f372fa8a41c82e6d1767f707f77a021dea82b3c5a61409508a",
+   "name": "get_weather",
+   "status": "completed",
+   "type": "function_call"
+  },
+  "output_index": 0,
+  "sequence_number": 5,
+  "type": "response.output_item.done"
+ },
+ {
+  "item": {
+   "arguments": "",
+   "call_id": "t2",
+   "id": "fc_f7c487632a5590380f1935365b97bf4a73dd6116ed49af45b1",
+   "name": "get_time",
+   "status": "in_progress",
+   "type": "function_call"
+  },
+  "output_index": 1,
+  "sequence_number": 6,
+  "type": "response.output_item.added"
+ },
+ {
+  "delta": "{\"b\":2}",
+  "item_id": "fc_f7c487632a5590380f1935365b97bf4a73dd6116ed49af45b1",
+  "output_index": 1,
+  "sequence_number": 7,
+  "type": "response.function_call_arguments.delta"
+ },
+ {
+  "arguments": "{\"b\":2}",
+  "item_id": "fc_f7c487632a5590380f1935365b97bf4a73dd6116ed49af45b1",
+  "output_index": 1,
+  "sequence_number": 8,
+  "type": "response.function_call_arguments.done"
+ },
+ {
+  "item": {
+   "arguments": "{\"b\":2}",
+   "call_id": "t2",
+   "id": "fc_f7c487632a5590380f1935365b97bf4a73dd6116ed49af45b1",
+   "name": "get_time",
+   "status": "completed",
+   "type": "function_call"
+  },
+  "output_index": 1,
+  "sequence_number": 9,
+  "type": "response.output_item.done"
+ },
+ {
+  "response": {
+   "created_at": 0,
+   "error": null,
+   "id": "msg_s",
+   "incomplete_details": null,
+   "instructions": null,
+   "metadata": null,
+   "model": "deepseek-v4-pro",
+   "object": "response",
+   "output": [
+    {
+     "arguments": "{\"a\":1}",
+     "call_id": "t1",
+     "id": "fc_f372fa8a41c82e6d1767f707f77a021dea82b3c5a61409508a",
+     "name": "get_weather",
+     "status": "completed",
+     "type": "function_call"
+    },
+    {
+     "arguments": "{\"b\":2}",
+     "call_id": "t2",
+     "id": "fc_f7c487632a5590380f1935365b97bf4a73dd6116ed49af45b1",
+     "name": "get_time",
+     "status": "completed",
+     "type": "function_call"
+    }
+   ],
+   "previous_response_id": null,
+   "status": "completed",
+   "temperature": null,
+   "top_p": null,
+   "usage": {
+    "input_tokens": 7,
+    "input_tokens_details": {
+     "cached_tokens": 0
+    },
+    "output_tokens": 9,
+    "output_tokens_details": {
+     "reasoning_tokens": 0
+    },
+    "total_tokens": 16
+   }
+  },
+  "sequence_number": 10,
+  "type": "response.completed"
+ }
+]

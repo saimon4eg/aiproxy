@@ -1,0 +1,21 @@
+{
+ "cache_control": {
+  "type": "ephemeral"
+ },
+ "max_tokens": 32000,
+ "messages": [
+  {
+   "content": "plain user",
+   "role": "user"
+  },
+  {
+   "content": "plain assistant",
+   "role": "assistant"
+  },
+  {
+   "content": "again",
+   "role": "user"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

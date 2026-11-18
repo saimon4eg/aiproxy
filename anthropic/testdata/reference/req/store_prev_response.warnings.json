@@ -1,0 +1,12 @@
+[
+ {
+  "action": "dropped",
+  "field": "store",
+  "message": "not supported in Anthropic"
+ },
+ {
+  "action": "dropped",
+  "field": "previous_response_id",
+  "message": "not supported in Anthropic"
+ }
+]

@@ -1,0 +1,3 @@
+{
+ "error": "SchemaValidationError: unknown variant `file_search`, expected one of `function`, `web_search*`, `custom`, `tool_search`, `namespace` at line 1 column 189"
+}

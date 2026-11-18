@@ -10,12 +10,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -38,8 +36,6 @@ var version = "dev"
 
 var activeProcesses sync.Map
 
-var linguafrancaAvailable int32 // atomic: 0=unchecked, 1=available, -1=unavailable
-
 func main() {
 	var (
 		port        = flag.Int("port", 0, "Server port (env: COPILOT2API_PORT, default: 7777)")
@@ -47,8 +43,32 @@ func main() {
 		tokenDir    = flag.String("token-dir", "", "Token storage directory (env: COPILOT2API_TOKEN_DIR, default: ~/.config/copilot2api)")
 		showVersion = flag.Bool("version", false, "Show version and exit")
 		debug       = flag.Bool("debug", false, "Enable debug logging (env: COPILOT2API_DEBUG)")
+		inertMCP    = flag.String("inert-mcp", "", "internal: serve an inert MCP tool inventory from this manifest")
+
+		logDir      = flag.String("log-dir", "", "Request log directory (env: AIPROXY_LOG_DIR, default: logs)")
+		logBodies   = flag.Bool("log-bodies", false, "Also write per-request body files (env: AIPROXY_LOG_BODIES, default: on with --debug)")
+		logProbes   = flag.Bool("log-probes", false, "Include liveness/model-list polls in the log (env: AIPROXY_LOG_PROBES)")
+		logRetain   = flag.Int("log-retention-days", 0, "Compress and drop request logs older than N days (env: AIPROXY_LOG_RETENTION_DAYS, default 14)")
+		logIndex    = flag.Bool("log-index", true, "Index request summaries in log-dir/index.sqlite (env: AIPROXY_LOG_INDEX)")
+		statsSince  = flag.String("stats-since", "7d", "With -stats: window, e.g. 24h, 7d")
+		statsGroup  = flag.String("stats-group-by", "", "With -stats: client, model, provider, task, profile, origin, status, error_code, reason, path")
+		statsBy     = flag.String("stats-by", "", "With -stats: hour or day")
+		statsLimit  = flag.Int("stats-limit", 30, "With -stats: rows to return")
+		statsMode   = flag.Bool("stats", false, "Print a usage summary from the log index and exit")
+		backfill    = flag.Bool("backfill", false, "Index existing per-request body logs and exit")
+		backfillWin = flag.String("backfill-since", "90d", "With -backfill: how far back to read")
 	)
 	flag.Parse()
+
+	// The inert MCP inventory server is this binary re-invoked by the Claude Code
+	// child. It must run before any other initialisation.
+	if *inertMCP != "" {
+		if err := providers.RunInertMCP(*inertMCP); err != nil {
+			fmt.Fprintln(os.Stderr, "inert-mcp:", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	if !*debug {
 		if v := os.Getenv("COPILOT2API_DEBUG"); v != "" {
@@ -80,7 +100,7 @@ func main() {
 		}
 	}
 	if *showVersion {
-		fmt.Printf("copilot2api version %s\n", version)
+		fmt.Printf("aiproxy version %s\n", version)
 		os.Exit(0)
 	}
 
@@ -91,8 +111,55 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(logger)
 
-	if *debug {
-		requestlog.Init("logs")
+	// ── Request log ──
+	// Summaries are always written: they are what "who spent what" is answered
+	// from, and that must not depend on debug being on. Bodies stay tied to
+	// debug, because they are the bulk of the volume (8 KB per line, four lines
+	// per request).
+	logConfig := requestlog.Config{
+		Dir:           envString("AIPROXY_LOG_DIR", *logDir, "logs"),
+		Bodies:        *logBodies,
+		LogProbes:     *logProbes,
+		RetentionDays: *logRetain,
+		BodyBudget:    int64(envInt("AIPROXY_LOG_BODY_BUDGET_MB", 512)) << 20,
+		MaxBytes:      requestlog.ParseSize(os.Getenv("AIPROXY_LOG_MAX_SIZE"), 20<<30),
+		Index:         *logIndex,
+	}
+	if v, ok := envBool("AIPROXY_LOG_BODIES"); ok && !*logBodies {
+		logConfig.Bodies = v
+	} else if !*logBodies {
+		logConfig.Bodies = *debug
+	}
+	if v, ok := envBool("AIPROXY_LOG_PROBES"); ok && !*logProbes {
+		logConfig.LogProbes = v
+	}
+	if v, ok := envBool("AIPROXY_LOG_INDEX"); ok && *logIndex {
+		logConfig.Index = v
+	}
+	if logConfig.RetentionDays == 0 {
+		logConfig.RetentionDays = envInt("AIPROXY_LOG_RETENTION_DAYS", 14)
+	}
+	logConfig.RetentionInterval = requestlog.ParseDuration(os.Getenv("AIPROXY_LOG_RETENTION_INTERVAL"), 24*time.Hour)
+	// `-stats` reads the index and exits, before anything starts a server or
+	// opens a log file: the query path must be usable on a stopped deployment.
+	if *statsMode {
+		os.Exit(runStats(logConfig.Dir, *statsSince, *statsGroup, *statsBy, *statsLimit))
+	}
+	if *backfill {
+		logConfig.Index = true
+		os.Exit(runBackfill(logConfig.Dir, *backfillWin))
+	}
+	requestlog.Init(logConfig)
+	slog.Info("request log enabled",
+		"dir", logConfig.Dir, "bodies", logConfig.Bodies,
+		"probes", logConfig.LogProbes, "retention_days", logConfig.RetentionDays,
+		"body_limit", requestlog.BodyLimit(), "body_budget_mb", logConfig.BodyBudget>>20,
+		"max_size_bytes", logConfig.MaxBytes, "retention_interval", logConfig.RetentionInterval,
+		"index", logConfig.Index)
+
+	defer requestlog.Get().Close()
+	if stop := requestlog.Get().StartRetention(0); stop != nil {
+		defer stop()
 	}
 
 	if *tokenDir == "" {
@@ -118,9 +185,9 @@ func main() {
 	modelsCache := models.NewCache(upstreamClient, 5*time.Minute)
 
 	// Copilot handler — fallback for copilot-* models and unmatched routes.
-	proxyHandler := proxy.NewHandler(authClient, wrappedTransport, modelsCache, *debug)
-	anthropicHandler := anthropic.NewHandler(authClient, wrappedTransport, modelsCache, *debug)
-	geminiHandler := gemini.NewHandler(authClient, wrappedTransport, modelsCache, *debug)
+	proxyHandler := proxy.NewHandler(upstreamClient, authClient, modelsCache)
+	anthropicHandler := anthropic.NewHandler(upstreamClient, modelsCache)
+	geminiHandler := gemini.NewHandler(upstreamClient, modelsCache)
 
 	// Providers generalized router — all model routing goes through providers.json.
 	cfg, err := providers.LoadConfig("providers.json", proxyHandler)
@@ -132,6 +199,13 @@ func main() {
 	// (Anthropic→Responses conversion), matching upstream copilot2api.
 	cfg.SetCopilotAnthropicHandler(anthropicHandler)
 
+	// claude-cli providers own their credential: make sure the native login
+	// exists, running the CLI's own login inline when a terminal is attached.
+	if err := cfg.EnsureClaudeCLI(providers.EnvMap(os.Environ())); err != nil {
+		slog.Error("claude cli is not ready", "error", err)
+		os.Exit(1)
+	}
+
 	// Copilot config (integration-id + proxy) from providers.json — applied
 	// BEFORE authenticating so the device flow / token endpoints route through
 	// the proxy, and upstream requests identify with the right integrator
@@ -139,6 +213,15 @@ func main() {
 	if cp := cfg.ByID("copilot"); cp != nil {
 		copilot.SetIntegrationID(cp.IntegrationID)
 		copilot.SetAPIVersion(cp.APIVersion)
+		// contextTier: auto-detected per model from the /models catalog unless
+		// the provider pins or disables it (context_tier in providers.json).
+		upstreamClient.ConfigureContextTier(cp.ContextTier, func(modelID string) bool {
+			infoMap, err := modelsCache.GetInfo(context.Background())
+			if err != nil {
+				return false
+			}
+			return models.SupportsLongContext(infoMap[modelID])
+		})
 		if cp.ProxyHost != "" {
 			upstream.SetTransportProxy(transport, cp.ProxyHost)
 			auth.SetProxy(cp.ProxyHost)
@@ -164,12 +247,6 @@ func main() {
 				return nil, fmt.Errorf("openai oauth: %w", err)
 			}
 			return oc, nil
-		case "anthropic":
-			ac := anthropic.NewConfigFromEnv(proxyHost)
-			if err := ac.LoadOrAuthenticate(); err != nil {
-				return nil, fmt.Errorf("anthropic oauth: %w", err)
-			}
-			return ac.ToNativeConfig(), nil
 		}
 		return nil, fmt.Errorf("unknown oauth provider: %s", providerID)
 	})
@@ -194,22 +271,15 @@ func main() {
 	// Usage and health.
 	mux.HandleFunc("/usage", proxyHandler.HandleUsage)
 
-	// Check linguafranca once at startup.
-	if _, err := exec.LookPath("python3"); err == nil {
-		cmd := exec.Command("python3", "-c", "import linguafranca")
-		if cmd.Run() == nil {
-			atomic.StoreInt32(&linguafrancaAvailable, 1)
-		} else {
-			atomic.StoreInt32(&linguafrancaAvailable, -1)
-		}
-	}
+	// Observability: summaries and usage from the proxy's own records.
+	mux.Handle("/admin/stats", adminStatsHandler(logConfig.Dir))
+	mux.Handle("/admin/usage", adminUsageHandler(logConfig.Dir))
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		health := map[string]interface{}{
 			"status":    "ok",
 			"providers": len(cfg.Providers),
 		}
-		v := atomic.LoadInt32(&linguafrancaAvailable)
-		health["linguafranca"] = v == 1
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(health)
 	})
@@ -239,8 +309,12 @@ func main() {
 	localHandler := amplocal.NewHandler(localState)
 
 	mux.HandleFunc("/api/internal", func(w http.ResponseWriter, r *http.Request) {
-		if searchHandler.TryServe(w, r) { return }
-		if localHandler.TryServeInternal(w, r) { return }
+		if searchHandler.TryServe(w, r) {
+			return
+		}
+		if localHandler.TryServeInternal(w, r) {
+			return
+		}
 		ampReverseProxy.ServeHTTP(w, r)
 	})
 	mux.HandleFunc("/api/threads/find", localHandler.ServeThreadsFind)

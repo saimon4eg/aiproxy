@@ -1,0 +1,35 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "q",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "refusal": "no",
+     "type": "refusal"
+    }
+   ],
+   "role": "assistant",
+   "type": "message"
+  },
+  {
+   "content": [
+    {
+     "text": "n",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro"
+}

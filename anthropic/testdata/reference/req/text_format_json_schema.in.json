@@ -1,0 +1,24 @@
+{
+ "input": [
+  {
+   "content": [
+    {
+     "text": "hi",
+     "type": "input_text"
+    }
+   ],
+   "role": "user",
+   "type": "message"
+  }
+ ],
+ "model": "deepseek-v4-pro",
+ "text": {
+  "format": {
+   "name": "x",
+   "schema": {
+    "type": "object"
+   },
+   "type": "json_schema"
+  }
+ }
+}

@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "input[0].web_search_call",
+  "message": "web_search_call cannot be converted to Anthropic (missing encrypted_content)"
+ }
+]

@@ -1,0 +1,7 @@
+[
+ {
+  "action": "changed",
+  "field": "reasoning.effort",
+  "message": "minimal effort not supported in Anthropic output_config; mapped to low"
+ }
+]

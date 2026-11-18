@@ -52,6 +52,6 @@ func GetAdapter(typ, subType string) Adapter {
 // noopAdapter is the default adapter that does nothing.
 type noopAdapter struct{}
 
-func (a *noopAdapter) NormalizeTools(tools []json.RawMessage) []json.RawMessage   { return tools }
+func (a *noopAdapter) NormalizeTools(tools []json.RawMessage) []json.RawMessage         { return tools }
 func (a *noopAdapter) PatchRequest(body map[string]interface{}) map[string]interface{}  { return body }
 func (a *noopAdapter) PatchResponse(body map[string]interface{}) map[string]interface{} { return body }

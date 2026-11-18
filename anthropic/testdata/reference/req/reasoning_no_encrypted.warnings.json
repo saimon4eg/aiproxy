@@ -1,0 +1,7 @@
+[
+ {
+  "action": "dropped",
+  "field": "input[1].reasoning",
+  "message": "reasoning summary cannot be converted to Anthropic thinking without a signature"
+ }
+]
